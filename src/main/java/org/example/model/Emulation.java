@@ -1,0 +1,160 @@
+package org.example.model;
+
+import org.example.model.gate.Gate;
+import org.example.model.gate.GateResolver;
+import org.example.model.qubit.Complex;
+import org.example.model.qubit.Qubit;
+import org.example.model.qubit.QubitRegister;
+import org.example.script.Command;
+import org.example.script.Parser;
+
+import java.io.*;
+import java.util.*;
+
+public class Emulation implements Serializable {
+    private List<Gate> gatesHistory;    // История примененных гейтов
+    private Map<String, QubitRegister> qubitRegisters;
+    public Emulation() {
+        this.gatesHistory = new ArrayList<>();
+        this.qubitRegisters = new HashMap<>();
+    }
+
+
+    //apply(String) - отправляем в парсер, получаем операцию(здесь либо отдельно аргументы получаем
+    // и используем синглтон или статик класс,
+    // либо сразу в одноразовом объекте операции), совершаем операцию
+
+    public String run(String command) {
+        Command parsedCommand = Parser.parse(command);
+        if(parsedCommand==null) {
+            return "";
+        }
+        switch (parsedCommand.getType()) {
+            case CREATE_REGISTER -> {
+                return processCreateRegister(parsedCommand);
+            }
+            case APPLY_GATE -> {
+                return processApplyGate(parsedCommand);
+            }
+            case MEASURE -> {
+                return processMeasure(parsedCommand);
+            }
+            default -> {
+                return "Неизвестный тип команды!";
+            }
+        }
+    }
+
+    private String processCreateRegister(Command command) {
+        String registerName = command.getArgumentAsString("name");
+        int numOfQubits = command.getArgumentAsInt("size");
+        qubitRegisters.put(registerName,new QubitRegister(registerName, numOfQubits));
+        return "|"+toBinaryString(0, numOfQubits)+">: " + Complex.getOne()+"\n";
+    }
+
+    private String processApplyGate(Command command) {
+        Map<String, Object> args = command.getArguments();
+        String gateName = (String) args.get("gate");
+        List<Map<String, Object>> operandsData = (List<Map<String, Object>>) args.get("operands");
+
+        if (operandsData == null || operandsData.isEmpty()) {
+            return  "Не указаны операнды для гейта " + gateName;
+        }
+        QubitRegister baseRegister = null;
+        Integer[] incices = new Integer[operandsData.size()];
+        for (int i = 0; i < operandsData.size(); i++) {
+            Map<String, Object> operandData = operandsData.get(i);
+            String registerName = (String) operandData.get("register");
+            int index = (int) operandData.get("index");
+
+            QubitRegister register = qubitRegisters.get(registerName);
+            if(baseRegister == null) {
+                baseRegister = register;
+            } else if (baseRegister != register) {
+                System.out.println("Нельзя применять гейт на разные регистры! Создайте общий регистр");
+            }
+            if (register == null) {
+                return "Регистр " + registerName + " не найден.";
+            }
+            if (index < 0 || index >= register.size()) {
+                return "Индекс " + index + " вне границ регистра " + registerName + ".";
+            }
+            incices[i] =index;
+            if (incices[i] == null) {
+                return "Кубит не найден в регистре " + registerName + " по индексу " + index + ".";
+            }
+        }
+
+        applyGate(gateName, baseRegister, incices); // Применяем гейт к кубитам
+        System.out.println("Применен гейт " + gateName + " к кубитам: " + java.util.Arrays.toString(incices)+" регистра: " + baseRegister.toString() );
+        String output = "";
+        BitSet bs = baseRegister.getStates();
+        Complex[] ampls = baseRegister.getAmplitudes();;
+        for (int i = bs.nextSetBit(0); i >= 0 ; i = bs.nextSetBit(i+1)) {
+            output += "|"+toBinaryString(i, baseRegister.size())+">: " + ampls[i].toString()+"\n";
+        }
+        return output;
+    }
+
+    public static String toBinaryString(int num, int nBits) {
+        if (nBits <= 0) {
+            return ""; // Обработка некорректного ввода
+        }
+
+        if (nBits > 32) {
+            nBits = 32; // Ограничение до 32 бит (максимум для int)
+        }
+
+        StringBuilder binary = new StringBuilder();
+        for (int i = nBits - 1; i >= 0; i--) {
+            int bit = (num >> i) & 1; // Сдвигаем и получаем i-й бит
+            binary.append(bit);
+        }
+        return binary.toString();
+    }
+
+    private String processMeasure(Command command) {
+        HashMap<String, Object> qubitToMeasure = (HashMap<String, Object>) command.getArguments().get("operand");
+        Qubit qubit = qubitRegisters.get((String) qubitToMeasure.get("register")).getQubit((Integer) qubitToMeasure.get("index"));
+        return String.valueOf(qubit.sample());
+    }
+
+    public void applyGate(String gateName, QubitRegister register, Integer[] indices) {
+        Gate gate = GateResolver.resolveByName(gateName, register, indices);
+        gate.apply();
+        gatesHistory.add(gate);
+    }
+
+    public String translateToPlatform(String platform) {
+        StringBuilder translation = new StringBuilder();
+        for (Gate gate : gatesHistory) {
+            translation.append(gate.toPlatformCode(platform)).append("\n");
+        }
+        return translation.toString();
+    }
+
+    // Сохранение состояния эмуляции в файл
+    public void saveToFile(String filename) throws IOException {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filename))) {
+            oos.writeObject(this);
+        }
+    }
+
+    // Загрузка состояния эмуляции из файла
+    public static Emulation loadFromFile(String filename) throws IOException, ClassNotFoundException {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filename))) {
+            return (Emulation) ois.readObject();
+        }
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder("Emulation state:\n");
+        //sb.append(register);
+        sb.append("\nApplied Gates:\n");
+        for (Gate gate : gatesHistory) {
+            sb.append(gate.toString()).append("\n");
+        }
+        return sb.toString();
+    }
+}
