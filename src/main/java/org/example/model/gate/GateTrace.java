@@ -3,10 +3,11 @@ package org.example.model.gate;
 import lombok.Getter;
 import org.example.model.qubit.Complex;
 
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
-public class GateTrace {
+public class GateTrace implements Serializable {
     @Getter
     private Map<Integer, Map<Integer, Complex>> trace;
 

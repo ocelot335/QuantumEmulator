@@ -3,9 +3,10 @@ package org.example.model.gate;
 import org.example.model.qubit.Complex;
 import org.example.model.qubit.QubitRegister;
 
+import java.io.Serializable;
 import java.util.*;
 
-public abstract class Gate {
+public abstract class Gate implements Serializable {
     protected final Integer[] targetQubitsIndices;
     protected final QubitRegister targetRegister;
     protected final GateTrace trace;

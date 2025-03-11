@@ -11,11 +11,9 @@ import org.example.script.Parser;
 import java.io.*;
 import java.util.*;
 
-public class Emulation implements Serializable {
-    private List<Gate> gatesHistory;    // История примененных гейтов
+public class Emulation implements Serializable, Cloneable {
     private Map<String, QubitRegister> qubitRegisters;
     public Emulation() {
-        this.gatesHistory = new ArrayList<>();
         this.qubitRegisters = new HashMap<>();
     }
 
@@ -96,6 +94,23 @@ public class Emulation implements Serializable {
         return output;
     }
 
+    @Override
+    public Emulation clone() {
+        try {
+            // Сериализуем объект в поток байтов
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(baos);
+            oos.writeObject(this);
+
+            // Десериализуем объект из потока байтов, создавая глубокую копию
+            ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
+            ObjectInputStream ois = new ObjectInputStream(bais);
+            return (Emulation) ois.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            throw new RuntimeException("Ошибка при клонировании объекта Emulation", e);
+        }
+    }
+
     public static String toBinaryString(int num, int nBits) {
         if (nBits <= 0) {
             return ""; // Обработка некорректного ввода
@@ -122,32 +137,9 @@ public class Emulation implements Serializable {
     public void applyGate(String gateName, QubitRegister register, Integer[] indices) {
         Gate gate = GateResolver.resolveByName(gateName, register, indices);
         gate.apply();
-        gatesHistory.add(gate);
     }
 
-    public String translateToPlatform(String platform) {
-        StringBuilder translation = new StringBuilder();
-        for (Gate gate : gatesHistory) {
-            translation.append(gate.toPlatformCode(platform)).append("\n");
-        }
-        return translation.toString();
-    }
-
-    // Сохранение состояния эмуляции в файл
-    public void saveToFile(String filename) throws IOException {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filename))) {
-            oos.writeObject(this);
-        }
-    }
-
-    // Загрузка состояния эмуляции из файла
-    public static Emulation loadFromFile(String filename) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filename))) {
-            return (Emulation) ois.readObject();
-        }
-    }
-
-    @Override
+    /*@Override
     public String toString() {
         StringBuilder sb = new StringBuilder("Emulation state:\n");
         //sb.append(register);
@@ -156,5 +148,5 @@ public class Emulation implements Serializable {
             sb.append(gate.toString()).append("\n");
         }
         return sb.toString();
-    }
+    }*/
 }
