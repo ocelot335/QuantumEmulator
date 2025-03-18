@@ -10,7 +10,8 @@ package org.example.script;
 import java.util.*;
 
 public class Parser {
-    private static final Set<String> gateNames = new HashSet<>(Arrays.asList("X","Y", "H", "SWAP"));
+    private static final Set<String> gateNames = new HashSet<>(Arrays.asList("X","NOT", "Y", "H", "S", "T", "SWAP", "INC", "DEC"));
+
 
     public static Command parse(String command) {
         String[] tokens = command.split("\\s+");
@@ -44,7 +45,9 @@ public class Parser {
                 return null;
             }
             return createQuantumRegister(tokens[1], 1); // CQ name := CR name[1] по сути создает регистр размера 1
-        } else if (gateNames.contains(commandName)) { // Проверяем, является ли команда гейтом
+        } else if (gateNames.contains(commandName) ||
+                (commandName.startsWith("C") && gateNames.contains(commandName.substring(1))) ||
+                (commandName.startsWith("CC") && gateNames.contains(commandName.substring(2)))) { // Проверяем обычные и контролируемые гейты
             args.put("gate", commandName);
             List<Map<String, Object>> operands = new ArrayList<>();
             for (int i = 1; i < tokens.length; i++) {
@@ -57,7 +60,7 @@ public class Parser {
             }
             args.put("operands", operands);
             return new Command(Command.CommandType.APPLY_GATE, args);
-        } else if (commandName.equals("M")) { // Отдельно обрабатываем Measure, если нужно особое поведение
+        } else if (commandName.equals("M")) {
             //TODO: измерение регистра
             //TODO: !!!
 
@@ -72,20 +75,10 @@ public class Parser {
             }
             args.put("operand", operand);
             return new Command(Command.CommandType.MEASURE, args);
-        }
-        else {
+        } else {
             System.out.println("Неизвестная команда: " + command);
             return null;
         }
-    }
-
-    private static String[] getQubitInRegisterFromString(String arg) {
-        String[] parts = arg.split("[\\[\\]]");
-        if (parts.length == 1) {
-            return new String[]{parts[0], "0"};
-        }
-
-        return new String[]{parts[0], parts[1]};
     }
 
     private static Map<String, Object> parseOperand(String arg) {

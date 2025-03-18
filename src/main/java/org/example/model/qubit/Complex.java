@@ -40,6 +40,10 @@ public class Complex implements Serializable {
         return new Complex(this.real - other.real, this.imaginary - other.imaginary);
     }
 
+    public boolean equals(Complex other) {
+        return real == other.real && imaginary == other.imaginary;
+    }
+
     public Complex multiply(Complex other) {
         double realPart = this.real * other.real - this.imaginary * other.imaginary;
         double imaginaryPart = this.real * other.imaginary + this.imaginary * other.real;
@@ -58,10 +62,6 @@ public class Complex implements Serializable {
 
     public double modulusSquared() {
         return real * real + imaginary * imaginary;
-    }
-
-    public double modulus() {
-        return Math.sqrt(modulusSquared());
     }
 
 

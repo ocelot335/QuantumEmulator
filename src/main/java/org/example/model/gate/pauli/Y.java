@@ -1,39 +1,29 @@
 package org.example.model.gate.pauli;
 
+import javafx.util.Pair;
 import org.example.model.gate.Gate;
 import org.example.model.gate.GateTrace;
 import org.example.model.qubit.Complex;
-import org.example.model.qubit.Qubit;
 import org.example.model.qubit.QubitRegister;
 
 import java.util.BitSet;
 
 public class Y extends Gate {
-    public Y(QubitRegister register, Integer[] targetQubitsIncices)  {
+    public Y(QubitRegister register, Integer[] targetQubitsIncices) {
         super(register, targetQubitsIncices);
     }
 
-    @Override
-    public GateTrace apply() {
-        BitSet oldState = targetRegister.getStates();
-        Complex[] oldAmplitudes = targetRegister.getAmplitudes();
+    public Pair<Integer, Complex>[] getTosAndItsCoefs(Integer state) {
+        if((state>>targetQubitsIndices[0])%2==0) {
+            return new Pair[]{new Pair<>(state ^ (1<<targetQubitsIndices[0]), new Complex(0, 1))};
+        } else {
 
-        Integer id = targetQubitsIndices[0];
-        for (int i = oldState.nextSetBit(0); i >= 0 ; i = oldState.nextSetBit(i+1)) {
-            if((i>>id)%2==0) {
-                addAmplitude(i, i^(1<<id), oldAmplitudes[i].multiply(new Complex(0,1)));
-            } else {
-                addAmplitude(i, i^(1<<id), oldAmplitudes[i].multiply(new Complex(0,-1)));
-            }
+            return new Pair[]{new Pair<>(state ^ (1<<targetQubitsIndices[0]), new Complex(0, -1))};
         }
-        targetRegister.setStates(newState);
-        targetRegister.setAmplitudes(newAmplitudes);
-        return this.trace;
     }
 
     @Override
-    public String toPlatformCode(String platform) {
-        //todo
-        return "NOT IMPL";
+    public String toString() {
+        return "Y";
     }
 }

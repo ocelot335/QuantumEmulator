@@ -1,5 +1,7 @@
 package org.example.script;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class Command {
@@ -31,13 +33,11 @@ public class Command {
     }
 
     public String getArgumentAsString(String key) {
-        Object value = arguments.get(key);
-        return value instanceof String ? (String) value : null;
+        return (String) arguments.get(key);
     }
 
     public Integer getArgumentAsInt(String key) {
-        Object value = arguments.get(key);
-        return value instanceof Integer ? (Integer) value : null;
+        return (Integer) arguments.get(key);
     }
 
     @Override

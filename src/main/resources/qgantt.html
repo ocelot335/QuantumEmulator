@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QGantt Diagram</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        ::-webkit-scrollbar {
+            display: none;
+        }
+        
+        * {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        .qgantt-container {
+            display: flex;
+            overflow-x: auto;
+            padding: 10px;
+            background: white;
+            font-family: 'Courier New', monospace;
+            position: relative;
+            height: 100%;
+            box-sizing: border-box;
+        }
+        
+        .state-column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 120px;
+            margin: 0 20px;
+            position: relative;
+        }
+        
+        .state-column:first-child {
+            margin-left: 5px;
+        }
+        
+        .state-column:last-child {
+            margin-right: 5px;
+        }
+        
+        .state-header {
+            color: #666;
+            font-size: 1em;
+            margin-bottom: 5px;
+            position: relative;
+        }
+        
+        .state-item {
+            margin: 5px 0;
+            font-size: 1em;
+            white-space: nowrap;
+        }
+        
+        .state-digit {
+            display: inline-block;
+        }
+        
+        .state-digit.affected {
+            text-decoration: underline;
+            text-decoration-style: solid;
+            text-underline-offset: 2px;
+            text-decoration-thickness: 1px;
+        }
+        
+        .quantum-state {
+            text-align: center;
+            position: relative;
+            padding: 2px 5px;
+            margin: 2px 0;
+        }
+        
+        .quantum-state:hover {
+            background-color: transparent;
+        }
+        
+        .gate-label {
+            color: #000000;
+            font-style: italic;
+            margin-bottom: 15px;
+        }
+
+        .state-transition {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .arrow {
+            fill: none;
+            stroke: #000000;
+            stroke-width: 1;
+            opacity: 1;
+            transition: opacity 0.2s;
+        }
+
+        .arrow.dimmed {
+            opacity: 0.1;
+        }
+
+        .arrow-head {
+            fill: #000000;
+        }
+    </style>
+</head>
+<body>
+    <div id="qgantt" class="qgantt-container">
+        <svg id="arrows"></svg>
+    </div>
+    
+    <script>
+        function handleStateHover(container, state, columnIndex, entering) {
+            console.log(`Hover: state=${state}, column=${columnIndex}, entering=${entering}`);
+            const arrows = container.querySelectorAll('.arrow');
+            
+            if (!entering) {
+                arrows.forEach(arrow => arrow.classList.remove('dimmed'));
+                return;
+            }
+            
+            arrows.forEach(arrow => {
+                const arrowFromColumn = parseInt(arrow.dataset.fromColumn);
+                const arrowFromState = arrow.dataset.fromState;
+                
+                const zeroBasedColumnIndex = columnIndex - 1;
+                
+                if (zeroBasedColumnIndex === arrowFromColumn && arrowFromState === state) {
+                    arrow.classList.remove('dimmed');
+                } else {
+                    arrow.classList.add('dimmed');
+                }
+            });
+        }
+
+        function drawArrow(svg, x1, y1, x2, y2, fromState, fromColumn) {
+            const dStr = `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
+            
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', dStr);
+            path.setAttribute('class', 'arrow');
+            path.dataset.fromState = fromState;
+            path.dataset.fromColumn = fromColumn;
+            
+            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            marker.setAttribute('id', `arrowhead-${x1}-${y1}-${x2}-${y2}`);
+            marker.setAttribute('markerWidth', '6');
+            marker.setAttribute('markerHeight', '4');
+            marker.setAttribute('refX', '5');
+            marker.setAttribute('refY', '2');
+            marker.setAttribute('orient', 'auto');
+            
+            const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            polygon.setAttribute('points', '0 0, 6 2, 0 4');
+            polygon.setAttribute('class', 'arrow-head');
+            
+            marker.appendChild(polygon);
+            svg.appendChild(marker);
+            
+            path.setAttribute('marker-end', `url(#arrowhead-${x1}-${y1}-${x2}-${y2})`);
+            svg.appendChild(path);
+        }
+
+        function createStateColumn(stateData, index, gateInfo) {
+            const column = document.createElement('div');
+            column.className = 'state-column';
+            column.dataset.columnIndex = index;
+            
+            const header = document.createElement('div');
+            header.className = 'state-header';
+            header.textContent = index;
+            column.appendChild(header);
+
+            if (gateInfo && gateInfo.name) {
+                const gateLabel = document.createElement('div');
+                gateLabel.className = 'gate-label';
+                gateLabel.textContent = gateInfo.name;
+                column.appendChild(gateLabel);
+            }
+            
+            for (const [state, amplitude] of Object.entries(stateData)) {
+                const stateContainer = document.createElement('div');
+                stateContainer.className = 'quantum-state';
+                stateContainer.dataset.state = state;
+                
+                stateContainer.addEventListener('mouseenter', () => {
+                    handleStateHover(document.getElementById('qgantt'), state, index, true);
+                });
+                stateContainer.addEventListener('mouseleave', () => {
+                    handleStateHover(document.getElementById('qgantt'), state, index, false);
+                });
+                
+                const stateItem = document.createElement('div');
+                stateItem.className = 'state-item';
+                stateItem.textContent = '|';
+                
+                let prevState = null;
+                if (index > 1 && lastTransitions[index - 2]) {
+                    for (const [fromState, toStates] of Object.entries(lastTransitions[index - 2])) {
+                        if (Object.keys(toStates).includes(state)) {
+                            prevState = fromState;
+                            break;
+                        }
+                    }
+                }
+                
+                const affectedIndices = [];
+                if (gateInfo) {
+                    const isControlledGate = gateInfo.name.startsWith('C');
+                    if (isControlledGate) {
+                        const targetIndex = gateInfo.indices[gateInfo.indices.length - 1];
+                        //TODO
+                        if (prevState && prevState[targetIndex] !== state[targetIndex]) {
+                            affectedIndices.push(targetIndex);
+                        }
+                    } else {
+                        gateInfo.indices.forEach(index => {
+                            if (!prevState || prevState[index] !== state[index]) {
+                                affectedIndices.push(index);
+                            }
+                        });
+                    }
+                }
+                
+                for (let i = 0; i < state.length; i++) {
+                    const digitSpan = document.createElement('span');
+                    digitSpan.className = 'state-digit' + (affectedIndices.includes(i) ? ' affected' : '');
+                    digitSpan.textContent = state[i];
+                    stateItem.appendChild(digitSpan);
+                }
+                stateItem.appendChild(document.createTextNode('>'));
+                
+                stateContainer.appendChild(stateItem);
+                
+                const amplitudeItem = document.createElement('div');
+                amplitudeItem.className = 'amplitude';
+                amplitudeItem.textContent = amplitude;
+                stateContainer.appendChild(amplitudeItem);
+                
+                column.appendChild(stateContainer);
+            }
+            
+            return column;
+        }
+
+        let lastTransitions = [];
+
+        function drawTransitions(container, transitions) {
+            console.log('drawTransitions called with transitions:', transitions);
+            lastTransitions = transitions;
+            updateArrowPositions();
+        }
+
+        function updateArrowPositions() {
+            console.log('updateArrowPositions called with lastTransitions:', lastTransitions);
+            const container = document.getElementById('qgantt');
+            const svg = document.getElementById('arrows');
+            const containerRect = container.getBoundingClientRect();
+
+            while (svg.firstChild) {
+                svg.removeChild(svg.firstChild);
+            }
+            
+            svg.style.width = container.scrollWidth + 'px';
+            svg.style.height = container.scrollHeight + 'px';
+            
+            const columns = container.querySelectorAll('.state-column');
+            console.log('Found columns:', columns.length);
+            
+            for (let i = 0; i < columns.length - 1; i++) {
+                const fromColumn = columns[i];
+                const toColumn = columns[i + 1];
+                const fromStates = fromColumn.querySelectorAll('.quantum-state');
+                const toStates = toColumn.querySelectorAll('.quantum-state');
+                
+                console.log(`Column ${i}: fromStates=${fromStates.length}, toStates=${toStates.length}`);
+                
+                const transitions = lastTransitions[i] || {};
+                console.log(`Transitions for column ${i}:`, transitions);
+                
+                fromStates.forEach(fromState => {
+                    const fromStateId = fromState.dataset.state;
+                    const fromRect = fromState.getBoundingClientRect();
+                    const fromX = fromRect.right - containerRect.left;
+                    const fromY = fromRect.top - containerRect.top + fromRect.height / 2;
+                    
+                    const targetStates = transitions[fromStateId] || {};
+                    console.log(`From state ${fromStateId} to states:`, targetStates);
+                    
+                    toStates.forEach(toState => {
+                        const toStateId = toState.dataset.state;
+                        if (targetStates[toStateId]) {
+                            console.log(`Drawing arrow from ${fromStateId} to ${toStateId}`);
+                            const toRect = toState.getBoundingClientRect();
+                            const toX = toRect.left - containerRect.left;
+                            const toY = toRect.top - containerRect.top + toRect.height / 2;
+                            
+                            drawArrow(svg, fromX, fromY, toX, toY, fromStateId, i);
+                        }
+                    });
+                });
+            }
+        }
+        
+        function updateQGantt(data, transitions = [], gates = []) {
+            console.log('Updating QGantt with data:', data);
+            console.log('Transitions:', transitions);
+            console.log('Gates:', gates);
+            
+            const container = document.getElementById('qgantt');
+            if (!container) {
+                console.error('QGantt container not found!');
+                return;
+            }
+            container.innerHTML = '<svg id="arrows"></svg>';
+            
+            data.forEach((stateData, index) => {
+                const gateInfo = gates[index - 1];
+                container.appendChild(createStateColumn(stateData, index + 1, gateInfo));
+            });
+
+            setTimeout(() => {
+                const svg = document.getElementById('arrows');
+                svg.style.width = container.scrollWidth + 'px';
+                svg.style.height = container.scrollHeight + 'px';
+                drawTransitions(container, transitions);
+            }, 100);
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('QGantt page loaded');
+            const container = document.getElementById('qgantt');
+            console.log('QGantt container found:', !!container);
+        });
+    </script>
+</body>
+</html> 

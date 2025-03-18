@@ -9,14 +9,14 @@ import java.util.Map;
 
 public class GateTrace implements Serializable {
     @Getter
-    private Map<Integer, Map<Integer, Complex>> trace;
+    private final Map<Integer, Map<Integer, Complex>> trace;
 
     public GateTrace() {
         trace = new HashMap<>();
     }
 
     public void addAmplitude(Integer stateFrom, Integer stateTo, Complex amplitude) {
-        if(!trace.containsKey(stateFrom)) {
+        if (!trace.containsKey(stateFrom)) {
             trace.put(stateFrom, new HashMap<>());
         }
         Map<Integer, Complex> fromMap = trace.get(stateFrom);

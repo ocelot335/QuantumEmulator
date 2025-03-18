@@ -1,5 +1,6 @@
 package org.example.model.gate.pauli;
 
+import javafx.util.Pair;
 import org.example.model.gate.Gate;
 import org.example.model.gate.GateTrace;
 import org.example.model.qubit.Complex;
@@ -8,8 +9,12 @@ import org.example.model.qubit.QubitRegister;
 import java.util.BitSet;
 
 public class Z extends Gate {
-    public Z(QubitRegister register, Integer[] targetQubitsIncices)  {
+    public Z(QubitRegister register, Integer[] targetQubitsIncices) {
         super(register, targetQubitsIncices);
+    }
+
+    public Pair<Integer, Complex>[] getTosAndItsCoefs(Integer state) {
+        return null;
     }
 
     @Override
@@ -18,8 +23,8 @@ public class Z extends Gate {
         Complex[] oldAmplitudes = targetRegister.getAmplitudes();
 
         Integer id = targetQubitsIndices[0];
-        for (int i = oldState.nextSetBit(0); i >= 0 ; i = oldState.nextSetBit(i+1)) {
-            if((i>>id)%2==0) {
+        for (int i = oldState.nextSetBit(0); i >= 0; i = oldState.nextSetBit(i + 1)) {
+            if ((i >> id) % 2 == 0) {
                 addAmplitude(i, i, oldAmplitudes[i]);
             } else {
                 addAmplitude(i, i, oldAmplitudes[i].multiply(new Complex(-1)));
@@ -31,8 +36,7 @@ public class Z extends Gate {
     }
 
     @Override
-    public String toPlatformCode(String platform) {
-        //todo
-        return "NOT IMPL";
+    public String toString() {
+        return "Z";
     }
 }

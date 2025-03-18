@@ -5,8 +5,6 @@ import org.example.script.Command;
 
 import java.util.List;
 
-public interface Translator {
+public interface QuantumTranslator {
     String translate(List<Command> commands, Emulation context);
-    String getFileExtension();
-    String getPlatformName();
-}
+} 

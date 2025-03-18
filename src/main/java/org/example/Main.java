@@ -10,12 +10,16 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
-import javafx.stage.Screen;
 import javafx.stage.Stage;
 import org.example.model.Emulation;
 import org.example.script.Command;
 import org.example.script.Parser;
-import org.example.translation.QiskitTranslator;
+import org.example.translation.QuantumTranslator;
+import org.example.translation.TranslatorFactory;
+import org.example.qgantt.QGanttManager;
+import org.fxmisc.richtext.CodeArea;
+import org.fxmisc.richtext.LineNumberFactory;
+import org.example.syntax.SyntaxHighlighter;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -31,27 +35,23 @@ public class Main extends Application {
     private List<String> commandList = new ArrayList<>();
     private Stack<Emulation> stateHistory = new Stack<>();
     private Stack<String> outputHistory = new Stack<>();
-    private List<Command> commandsToTranslate = new ArrayList<>();
-    private TextArea commandInput;
-    private TextArea outputArea;
+    private CodeArea commandInput;
+    private CodeArea measurementOutput;
+    private QGanttManager qganttManager;
 
     @Override
     public void start(Stage stage) {
-        outputArea = new TextArea();
-        outputArea.setEditable(false);
-        outputArea.setPromptText("Текущее состояние...");
-        outputArea.setPrefHeight(Screen.getPrimary().getBounds().getHeight() / 2);
-
-        commandInput = new TextArea();
-        commandInput.setPromptText("Введите команды (каждая команда с новой строки)...");
+        qganttManager = new QGanttManager();
+        setupCodeArea();
+        setupMeasurementOutput();
 
         Button executeAllButton = new Button("Выполнить все");
         Button stepForwardButton = new Button("Шаг вперёд");
         Button stepBackwardButton = new Button("Шаг назад");
 
-        executeAllButton.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
-        stepForwardButton.setStyle("-fx-background-color: #2196F3; -fx-text-fill: white;");
-        stepBackwardButton.setStyle("-fx-background-color: #F44336; -fx-text-fill: white;");
+        executeAllButton.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15;");
+        stepForwardButton.setStyle("-fx-background-color: #2196F3; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15;");
+        stepBackwardButton.setStyle("-fx-background-color: #F44336; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 15;");
 
         MenuBar menuBar = new MenuBar();
 
@@ -85,7 +85,6 @@ public class Main extends Application {
                     writer.write(commandInput.getText());
                 } catch (IOException ex) {
                     ex.printStackTrace();
-                    outputArea.appendText("Ошибка при сохранении файла: " + ex.getMessage() + "\n");
                 }
             }
         });
@@ -104,14 +103,13 @@ public class Main extends Application {
                     while ((line = reader.readLine()) != null) {
                         content.append(line).append("\n");
                     }
-                    commandInput.setText(content.toString());
+                    commandInput.replaceText(content.toString());
                     commandList.clear();
                     currentLineIndex = -1;
                     stateHistory.clear();
                     outputHistory.clear();
                 } catch (IOException ex) {
                     ex.printStackTrace();
-                    outputArea.appendText("Ошибка при загрузке файла: " + ex.getMessage() + "\n");
                 }
             }
         });
@@ -126,17 +124,25 @@ public class Main extends Application {
             if (file != null) {
                 try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(file))) {
                     Emulation currentState = context.clone();
-                    String currentOutput = outputArea.getText();
 
                     Stack<String> newOutputHistory = new Stack<>();
                     newOutputHistory.addAll(outputHistory);
-                    newOutputHistory.push(currentOutput);
-                    System.out.println(newOutputHistory);
-                    org.example.model.AppState appState = new org.example.model.AppState(currentState, stateHistory, newOutputHistory, commandList, outputCounter, currentLineIndex);
+
+                    org.example.model.AppState appState = new org.example.model.AppState(
+                            currentState,
+                            stateHistory,
+                            newOutputHistory,
+                            commandList,
+                            outputCounter,
+                            currentLineIndex,
+                            qganttManager.getStateHistory(),
+                            qganttManager.getTransitions(),
+                            qganttManager.getGateNames(),
+                            qganttManager.getNumQubits()
+                    );
                     oos.writeObject(appState);
                 } catch (IOException ex) {
                     ex.printStackTrace();
-                    outputArea.appendText("Ошибка при сохранении модели: " + ex.getMessage() + "\n");
                 }
             }
         });
@@ -159,13 +165,13 @@ public class Main extends Application {
                     outputCounter = appState.getOutputCounter();
                     currentLineIndex = appState.getCurrentLineIndex();
 
-                    commandInput.setText(String.join("\n", commandList));
+                    commandInput.replaceText(String.join("\n", commandList));
                     stateHistory.push(context);
-                    if (!outputHistory.isEmpty()) {
-                        outputArea.setText(outputHistory.pop());
-                    } else {
-                        outputArea.setText("");
-                    }
+
+                    qganttManager.clear();
+                    qganttManager.setNumQubits(appState.getNumQubits());
+                    qganttManager.restoreHistory(appState.getQganttStateHistory(),
+                            appState.getQganttTransitionHistory(), appState.getGateNamesHistory());
 
                     if (currentLineIndex >= 0 && currentLineIndex < commandList.size()) {
                         highlightCurrentLine(commandInput, currentLineIndex);
@@ -174,7 +180,6 @@ public class Main extends Application {
                     }
                 } catch (IOException | ClassNotFoundException ex) {
                     ex.printStackTrace();
-                    outputArea.appendText("Ошибка при загрузке модели: " + ex.getMessage() + "\n");
                 }
             }
         });
@@ -196,12 +201,13 @@ public class Main extends Application {
 
         executeAllButton.setOnAction(e -> {
             String commands = commandInput.getText().trim();
-            outputArea.setText("");
             outputCounter = 1;
             currentLineIndex = -1;
             context = new Emulation();
             stateHistory.clear();
             outputHistory.clear();
+            qganttManager.clear();
+            measurementOutput.clear();
 
             if (!commands.isEmpty()) {
                 commandList = Arrays.asList(commands.split("\\r?\\n"));
@@ -209,7 +215,7 @@ public class Main extends Application {
                     String command = commandList.get(i).trim();
                     if (!command.isEmpty()) {
                         currentLineIndex = i;
-                        executeCommand(command, outputArea, true);
+                        executeCommand(command, null, true);
                         highlightCurrentLine(commandInput, i);
                     }
                 }
@@ -223,7 +229,6 @@ public class Main extends Application {
                     commandList = Arrays.asList(commands.split("\\r?\\n"));
                     currentLineIndex = -1;
                     context = new Emulation();
-                    outputArea.setText("");
                     outputCounter = 1;
                     stateHistory.clear();
                     outputHistory.clear();
@@ -237,7 +242,7 @@ public class Main extends Application {
 
                 if (currentLineIndex < commandList.size()) {
                     String command = commandList.get(currentLineIndex).trim();
-                    executeCommand(command, outputArea, true);
+                    executeCommand(command, null, true);
                     highlightCurrentLine(commandInput, currentLineIndex);
                 } else {
                     currentLineIndex--;
@@ -246,10 +251,8 @@ public class Main extends Application {
         });
 
         stepBackwardButton.setOnAction(e -> {
-            if (!stateHistory.isEmpty() && !outputHistory.isEmpty()) {
+            if (!stateHistory.isEmpty()) {
                 context = stateHistory.pop();
-                String previousOutput = outputHistory.pop();
-                outputArea.setText(previousOutput);
                 outputCounter--;
 
                 currentLineIndex--;
@@ -257,6 +260,8 @@ public class Main extends Application {
                         commandList.get(currentLineIndex).trim().isEmpty()) {
                     currentLineIndex--;
                 }
+
+                qganttManager.removeLastState();
 
                 if (currentLineIndex >= 0) {
                     highlightCurrentLine(commandInput, currentLineIndex);
@@ -266,22 +271,50 @@ public class Main extends Application {
             }
         });
 
-        HBox controlButtons = new HBox(10, executeAllButton, stepForwardButton, stepBackwardButton);
+        VBox leftPanel = new VBox(10);
+        leftPanel.setPadding(new Insets(10));
+        leftPanel.setStyle("-fx-background-color: #f8f9fa; -fx-border-color: #dee2e6; -fx-border-radius: 5; -fx-background-radius: 5;");
+
+        Label inputLabel = new Label("Введите команды:");
+        inputLabel.setStyle("-fx-font-weight: bold;");
+        leftPanel.getChildren().addAll(inputLabel, commandInput);
+
+        Label measurementLabel = new Label("Результаты измерений:");
+        measurementLabel.setStyle("-fx-font-weight: bold;");
+        leftPanel.getChildren().addAll(measurementLabel, measurementOutput);
+
+        HBox controlButtons = new HBox(10);
         controlButtons.setAlignment(Pos.CENTER);
+        controlButtons.getChildren().addAll(executeAllButton, stepForwardButton, stepBackwardButton);
+        leftPanel.getChildren().add(controlButtons);
 
-        VBox inputBox = new VBox(10, commandInput, controlButtons);
-        inputBox.setAlignment(Pos.TOP_LEFT);
-        inputBox.setPadding(new Insets(10));
         VBox.setVgrow(commandInput, Priority.ALWAYS);
+        VBox.setVgrow(measurementOutput, Priority.ALWAYS);
 
-        VBox root = new VBox(10, menuBar, outputArea, inputBox);
-        root.setPadding(new Insets(10));
-        VBox.setVgrow(inputBox, Priority.ALWAYS);
+        HBox mainContent = new HBox(5);
+        mainContent.setPadding(new Insets(5));
+        mainContent.getChildren().addAll(leftPanel, qganttManager.getWebView());
+        HBox.setHgrow(qganttManager.getWebView(), Priority.ALWAYS);
+        HBox.setHgrow(leftPanel, Priority.SOMETIMES);
+
+        leftPanel.setPrefWidth(400);
+        leftPanel.setMinWidth(300);
+        qganttManager.getWebView().setPrefWidth(800);
+
+        VBox root = new VBox(5, menuBar, mainContent);
+        root.setPadding(new Insets(5));
+        VBox.setVgrow(mainContent, Priority.ALWAYS);
 
         Scene scene = new Scene(root);
         stage.setScene(scene);
-        stage.setTitle("Quantum Emulator");
 
+        qganttManager.getWebView().setStyle("-fx-border-color: #dee2e6; -fx-border-radius: 5; -fx-background-color: white;");
+        menuBar.setStyle("-fx-background-color: #f8f9fa; -fx-border-color: #dee2e6; -fx-border-width: 0 0 1 0;");
+        root.setStyle("-fx-background-color: white;");
+
+        scene.getStylesheets().add("data:text/css," + SyntaxHighlighter.getStyle());
+
+        stage.setTitle("Quantum Emulator");
         stage.setMaximized(true);
         stage.setFullScreenExitHint("");
         stage.show();
@@ -293,18 +326,58 @@ public class Main extends Application {
             Platform.runLater(() -> {
                 if (saveState) {
                     stateHistory.push(context.clone());
-                    outputHistory.push(outputArea.getText());
                 }
 
-                String result = context.run(finalCommand);
+                Command parsedCommand = Parser.parse(finalCommand);
+                if (parsedCommand != null) {
+                    String result = context.run(parsedCommand);
 
-                outputArea.appendText(outputCounter + ":\n" + result + "\n");
-                outputCounter++;
+                    if (parsedCommand.getType() == Command.CommandType.MEASURE) {
+                        measurementOutput.appendText(result + "\n");
+                    }else if (parsedCommand.getType() == Command.CommandType.CREATE_REGISTER) {
+                        int numQubits = parsedCommand.getArgumentAsInt("size");
+                        qganttManager.setNumQubits(numQubits);
+                        qganttManager.addState(context.getCurrentState());
+                    } else if (parsedCommand.getType() == Command.CommandType.APPLY_GATE) {
+                        String gateName = parsedCommand.getArgumentAsString("gate");
+                        var trace = context.getLastGateTrace();
+                        if (trace != null) {
+                            qganttManager.addGateTrace(trace, gateName);
+                        }
+                    }
+
+                    outputCounter++;
+                } else {
+                    measurementOutput.appendText("Ошибка: Неверный формат команды\n");
+                }
             });
         }
     }
 
-    private void highlightCurrentLine(TextArea textArea, int lineIndex) {
+    private void setupCodeArea() {
+        commandInput = new CodeArea();
+        commandInput.setWrapText(true);
+        commandInput.setParagraphGraphicFactory(LineNumberFactory.get(commandInput));
+        commandInput.setStyle("-fx-font-family: 'Consolas', 'Monaco', monospace; -fx-font-size: 14px;");
+        commandInput.textProperty().addListener((obs, oldText, newText) -> {
+            commandInput.setStyleSpans(0, SyntaxHighlighter.computeHighlighting(newText));
+        });
+    }
+
+    private void setupMeasurementOutput() {
+        measurementOutput = new CodeArea();
+        measurementOutput.setWrapText(true);
+        measurementOutput.setEditable(false);
+        measurementOutput.setStyle("""
+            -fx-font-family: 'Consolas', 'Monaco', monospace;
+            -fx-font-size: 14px;
+            -fx-background-color: white;
+            -fx-text-fill: black;
+            -fx-padding: 10px;
+            """);
+    }
+
+    private void highlightCurrentLine(CodeArea textArea, int lineIndex) {
         Platform.runLater(() -> {
             try {
                 String text = textArea.getText();
@@ -341,27 +414,38 @@ public class Main extends Application {
     }
 
     public String translateToPlatform(String platform) {
-        String text = commandInput.getText();
-        List<Command> commands = parseCommandsFromText(text);
-        
-        if (platform.equals("Qiskit")) {
-            return new QiskitTranslator().translate(commands, context);
-        } else if (platform.equals("Q#")) {
-            return "Q# транслятор пока не реализован";
-        } else if (platform.equals("Cirq")) {
-            return "Cirq транслятор пока не реализован";
+        try {
+            List<Command> commands = parseCommandsFromText(commandInput.getText());
+
+            QuantumTranslator translator = TranslatorFactory.createTranslator(platform);
+
+            return translator.translate(commands, context);
+        } catch (Exception e) {
+            return "Ошибка при трансляции: " + e.getMessage();
         }
-        return "Неподдерживаемая платформа: " + platform;
     }
 
     private void saveTranslationResult(String code, String platform, Stage stage) {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Сохранить " + platform + " код");
+
+        String extension = switch (platform) {
+            case "Q#" -> "*.qs";
+            case "Qiskit", "Cirq" -> "*.py";
+            default -> "*.*";
+        };
+        
         fileChooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Python Files", "*.py")
+                new FileChooser.ExtensionFilter(platform + " Files", extension)
         );
+        
         File file = fileChooser.showSaveDialog(stage);
         if (file != null) {
+            String filePath = file.getAbsolutePath();
+            if (!filePath.endsWith(extension.substring(1))) {
+                file = new File(filePath + extension.substring(1));
+            }
+            
             try (PrintWriter writer = new PrintWriter(file)) {
                 writer.write(code);
             } catch (IOException ex) {
@@ -371,6 +455,6 @@ public class Main extends Application {
     }
 
     public static void main(String[] args) {
-        launch();
+        launch(args);
     }
 }

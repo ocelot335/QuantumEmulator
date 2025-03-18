@@ -6,20 +6,16 @@ import org.example.model.qubit.QubitRegister;
 
 import java.util.BitSet;
 
-public class SWAP extends Gate {
-    public SWAP(QubitRegister register, Integer[] targetQubitsIncices) {
+public class Increment extends Gate {
+    private final boolean increment;
+
+    public Increment(QubitRegister register, Integer[] targetQubitsIncices, boolean increment) {
         super(register, targetQubitsIncices);
+        this.increment = increment;
     }
 
-    @Override
     public Pair<Integer, Complex>[] getTosAndItsCoefs(Integer state) {
-        Integer id1 = targetQubitsIndices[0];
-        Integer id2 = targetQubitsIndices[1];
-        if ((state >> id1) % 2 == (state >> id2) % 2) {
-            return new Pair[]{new Pair<>(state, Complex.getOne())};
-        } else {
-            return new Pair[]{new Pair<>(state ^ ((1 << id1) | (1 << id2)), Complex.getOne())};
-        }
+        return null;
     }
 
     @Override
@@ -27,15 +23,15 @@ public class SWAP extends Gate {
         BitSet oldState = targetRegister.getStates();
         Complex[] oldAmplitudes = targetRegister.getAmplitudes();
 
-        Integer id1 = targetQubitsIndices[0];
-        Integer id2 = targetQubitsIndices[1];
+        Integer numOfStates = 1 << targetRegister.size();
         for (int i = oldState.nextSetBit(0); i >= 0; i = oldState.nextSetBit(i + 1)) {
-            if ((i >> id1) % 2 == (i >> id2) % 2) {
-                addAmplitude(i, i, oldAmplitudes[i]);
+            if (increment) {
+                addAmplitude(i, (i + 1) % numOfStates, oldAmplitudes[i]);
             } else {
-                addAmplitude(i, i ^ ((1 << id1) | (1 << id2)), oldAmplitudes[i]);
+                addAmplitude(i, (i - 1 + numOfStates) % numOfStates, oldAmplitudes[i]);
             }
         }
+
         targetRegister.setStates(newState);
         targetRegister.setAmplitudes(newAmplitudes);
         return this.trace;
@@ -43,6 +39,10 @@ public class SWAP extends Gate {
 
     @Override
     public String toString() {
-        return "SWAP";
+        if(this.increment) {
+            return "INC";
+        } else {
+            return "DEC";
+        }
     }
 }
