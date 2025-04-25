@@ -1,12 +1,9 @@
-package org.example.model.gate.pauli;
+package org.example.model.gate.instances.pauli;
 
 import javafx.util.Pair;
 import org.example.model.gate.Gate;
-import org.example.model.gate.GateTrace;
 import org.example.model.qubit.Complex;
 import org.example.model.qubit.QubitRegister;
-
-import java.util.BitSet;
 
 public class Y extends Gate {
     public Y(QubitRegister register, Integer[] targetQubitsIncices) {
@@ -14,11 +11,10 @@ public class Y extends Gate {
     }
 
     public Pair<Integer, Complex>[] getTosAndItsCoefs(Integer state) {
-        if((state>>targetQubitsIndices[0])%2==0) {
-            return new Pair[]{new Pair<>(state ^ (1<<targetQubitsIndices[0]), new Complex(0, 1))};
+        if ((state >> targetQubitsIndices[0]) % 2 == 0) {
+            return new Pair[]{new Pair<>(state ^ (1 << targetQubitsIndices[0]), new Complex(0, 1))};
         } else {
-
-            return new Pair[]{new Pair<>(state ^ (1<<targetQubitsIndices[0]), new Complex(0, -1))};
+            return new Pair[]{new Pair<>(state ^ (1 << targetQubitsIndices[0]), new Complex(0, -1))};
         }
     }
 

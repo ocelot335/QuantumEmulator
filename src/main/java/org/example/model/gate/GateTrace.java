@@ -17,7 +17,7 @@ public class GateTrace implements Serializable {
 
     public void addAmplitude(Integer stateFrom, Integer stateTo, Complex amplitude) {
         if (!trace.containsKey(stateFrom)) {
-            trace.put(stateFrom, new HashMap<>());
+            trace.put(stateFrom, new HashMap<>(2));
         }
         Map<Integer, Complex> fromMap = trace.get(stateFrom);
 

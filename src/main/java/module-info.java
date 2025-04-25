@@ -5,7 +5,8 @@ module org.example.qe {
     requires javafx.graphics;
     requires org.fxmisc.richtext;
     requires static lombok;
-    
+    requires java.management;
+
     exports org.example;
     exports org.example.model;
     exports org.example.model.qubit;
@@ -14,4 +15,5 @@ module org.example.qe {
     exports org.example.qgantt;
     exports org.example.syntax;
     exports org.example.model.gate;
+    exports org.example.model.gate.instances;
 }

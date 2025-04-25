@@ -1,8 +1,9 @@
 package org.example.model.gate;
 
-import org.example.model.gate.pauli.X;
-import org.example.model.gate.pauli.Y;
-import org.example.model.gate.pauli.Z;
+import org.example.model.gate.instances.*;
+import org.example.model.gate.instances.pauli.X;
+import org.example.model.gate.instances.pauli.Y;
+import org.example.model.gate.instances.pauli.Z;
 import org.example.model.qubit.QubitRegister;
 
 public class GateResolver {

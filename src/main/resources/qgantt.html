@@ -13,23 +13,48 @@
         ::-webkit-scrollbar {
             display: none;
         }
-        
+
         * {
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
-        
+
         .qgantt-container {
-            display: flex;
-            overflow-x: auto;
             padding: 10px;
             background: white;
             font-family: 'Courier New', monospace;
-            position: relative;
             height: 100%;
             box-sizing: border-box;
+            overflow: auto;
+            position: relative;
+            min-height: 400px;
+            min-width: 600px;
         }
-        
+
+        .register-container {
+            border: 1px solid #777;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(119, 119, 119, 0.2);
+            position: absolute;
+            background-color: white;
+            min-width: 150px;
+        }
+
+        .register-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #444;
+            text-align: center;
+        }
+
+        .register-content {
+            display: flex;
+            overflow-x: auto;
+            position: relative;
+        }
+
         .state-column {
             display: flex;
             flex-direction: column;
@@ -37,317 +62,1018 @@
             min-width: 120px;
             margin: 0 20px;
             position: relative;
+            flex-shrink: 0;
         }
-        
+
         .state-column:first-child {
             margin-left: 5px;
         }
-        
+
         .state-column:last-child {
             margin-right: 5px;
         }
-        
+
         .state-header {
             color: #666;
             font-size: 1em;
             margin-bottom: 5px;
             position: relative;
         }
-        
+
         .state-item {
             margin: 5px 0;
             font-size: 1em;
             white-space: nowrap;
         }
-        
+
         .state-digit {
             display: inline-block;
         }
-        
+
         .state-digit.affected {
             text-decoration: underline;
             text-decoration-style: solid;
             text-underline-offset: 2px;
             text-decoration-thickness: 1px;
         }
-        
+
         .quantum-state {
             text-align: center;
             position: relative;
             padding: 2px 5px;
             margin: 2px 0;
         }
-        
+
         .quantum-state:hover {
             background-color: transparent;
         }
-        
+
         .gate-label {
             color: #000000;
             font-style: italic;
             margin-bottom: 15px;
         }
 
-        .state-transition {
-            position: absolute;
-            pointer-events: none;
-            z-index: 1;
-        }
-
-        svg {
+        .register-svg {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             pointer-events: none;
+            z-index: 10;
         }
 
         .arrow {
             fill: none;
-            stroke: #000000;
-            stroke-width: 1;
-            opacity: 1;
-            transition: opacity 0.2s;
+            stroke: #777;
+            stroke-width: 1px;
+            transition: opacity 0.2s ease;
         }
 
         .arrow.dimmed {
             opacity: 0.1;
         }
 
-        .arrow-head {
-            fill: #000000;
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 10px;
+            height: 10px;
+            background-color: #ccc;
+            border: 1px solid #888;
+            cursor: nwse-resize; /* Курсор для изменения размера */
+            z-index: 1001; /* Выше чем .register-title */
         }
     </style>
 </head>
 <body>
-    <div id="qgantt" class="qgantt-container">
-        <svg id="arrows"></svg>
+<div id="qgantt" class="qgantt-container">
+    <div id="qgantt-zoom-wrapper" style="position: relative; transform-origin: top left; width: 100%; height: 100%;">
+        <svg id="merge-svg-layer"
+             style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:20;">
+        </svg>
     </div>
+</div>
+
+<svg width="0" height="0" style="position:absolute;z-index:-1;">
+    <defs>
+        <marker
+            id="global-arrowhead" 
+            markerWidth="5"
+            markerHeight="5"
+            refX="5" 
+            refY="2.5"
+            orient="auto"
+            markerUnits="strokeWidth">
+            <path d="M0,0 L0,5 L5,2.5 Z" fill="#777" />
+        </marker>
+        <marker
+            id="merge-arrowhead"
+            markerWidth="6"
+            markerHeight="6"
+            refX="6"
+            refY="3"
+            orient="auto"
+            markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L6,3 Z" fill="#333333" /> <!-- Black/Grey color -->
+        </marker>
+    </defs>
+</svg>
+
+<script>
+    let globalData = {};
+    let updatePending = false;
+
+    let isDragging = false;
+    let dragTarget = null;
+    let dragRegisterName = null;
+    let startX, startY, initialLeft, initialTop;
     
-    <script>
-        function handleStateHover(container, state, columnIndex, entering) {
-            console.log(`Hover: state=${state}, column=${columnIndex}, entering=${entering}`);
-            const arrows = container.querySelectorAll('.arrow');
-            
-            if (!entering) {
-                arrows.forEach(arrow => arrow.classList.remove('dimmed'));
-                return;
-            }
-            
-            arrows.forEach(arrow => {
-                const arrowFromColumn = parseInt(arrow.dataset.fromColumn);
-                const arrowFromState = arrow.dataset.fromState;
-                
-                const zeroBasedColumnIndex = columnIndex - 1;
-                
-                if (zeroBasedColumnIndex === arrowFromColumn && arrowFromState === state) {
-                    arrow.classList.remove('dimmed');
-                } else {
-                    arrow.classList.add('dimmed');
-                }
+    let isResizing = false;
+    let resizeTarget = null;
+    let resizeRegisterName = null;
+    let initialWidth, initialHeight;
+    let resizeMode = null;
+    const resizeBorderThreshold = 10;
+    const minContainerWidth = 150;
+    const minContainerHeight = 100;
+    let currentScale = 1.0;
+    const scaleStep = 0.1;
+    const minScale = 0.2;
+    const maxScale = 3.0;
+    let isPanning = false;
+    let panStartX, panStartY;
+    let initialScrollLeft, initialScrollTop;
+
+    function scheduleArrowUpdate() {
+        if (!updatePending) {
+            updatePending = true;
+            requestAnimationFrame(() => {
+                updateArrows();
+                drawMergeArrows();
+                updatePending = false;
             });
         }
-
-        function drawArrow(svg, x1, y1, x2, y2, fromState, fromColumn) {
-            const dStr = `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
+    }
+    
+    function updateArrows() {
+        for (const registerName in globalData) {
+            const registerContainer = document.getElementById(`register-${registerName}`);
+            if (!registerContainer) continue;
             
-            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('d', dStr);
-            path.setAttribute('class', 'arrow');
-            path.dataset.fromState = fromState;
-            path.dataset.fromColumn = fromColumn;
+            const contentElement = registerContainer.querySelector('.register-content');
+            if (!contentElement) continue;
             
-            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-            marker.setAttribute('id', `arrowhead-${x1}-${y1}-${x2}-${y2}`);
-            marker.setAttribute('markerWidth', '6');
-            marker.setAttribute('markerHeight', '4');
-            marker.setAttribute('refX', '5');
-            marker.setAttribute('refY', '2');
-            marker.setAttribute('orient', 'auto');
+            let svg = registerContainer.querySelector('.register-svg');
             
-            const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-            polygon.setAttribute('points', '0 0, 6 2, 0 4');
-            polygon.setAttribute('class', 'arrow-head');
-            
-            marker.appendChild(polygon);
-            svg.appendChild(marker);
-            
-            path.setAttribute('marker-end', `url(#arrowhead-${x1}-${y1}-${x2}-${y2})`);
-            svg.appendChild(path);
-        }
-
-        function createStateColumn(stateData, index, gateInfo) {
-            const column = document.createElement('div');
-            column.className = 'state-column';
-            column.dataset.columnIndex = index;
-            
-            const header = document.createElement('div');
-            header.className = 'state-header';
-            header.textContent = index;
-            column.appendChild(header);
-
-            if (gateInfo && gateInfo.name) {
-                const gateLabel = document.createElement('div');
-                gateLabel.className = 'gate-label';
-                gateLabel.textContent = gateInfo.name;
-                column.appendChild(gateLabel);
+            if (!svg) {
+                svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('class', 'register-svg');
+                registerContainer.appendChild(svg);
+                
+                createArrows(registerName, registerContainer, contentElement, svg);
             }
             
-            for (const [state, amplitude] of Object.entries(stateData)) {
-                const stateContainer = document.createElement('div');
-                stateContainer.className = 'quantum-state';
-                stateContainer.dataset.state = state;
-                
-                stateContainer.addEventListener('mouseenter', () => {
-                    handleStateHover(document.getElementById('qgantt'), state, index, true);
-                });
-                stateContainer.addEventListener('mouseleave', () => {
-                    handleStateHover(document.getElementById('qgantt'), state, index, false);
-                });
-                
-                const stateItem = document.createElement('div');
-                stateItem.className = 'state-item';
-                stateItem.textContent = '|';
-                
-                let prevState = null;
-                if (index > 1 && lastTransitions[index - 2]) {
-                    for (const [fromState, toStates] of Object.entries(lastTransitions[index - 2])) {
-                        if (Object.keys(toStates).includes(state)) {
-                            prevState = fromState;
-                            break;
-                        }
-                    }
-                }
-                
-                const affectedIndices = [];
-                if (gateInfo) {
-                    const isControlledGate = gateInfo.name.startsWith('C');
-                    if (isControlledGate) {
-                        const targetIndex = gateInfo.indices[gateInfo.indices.length - 1];
-                        //TODO
-                        if (prevState && prevState[targetIndex] !== state[targetIndex]) {
-                            affectedIndices.push(targetIndex);
-                        }
-                    } else {
-                        gateInfo.indices.forEach(index => {
-                            if (!prevState || prevState[index] !== state[index]) {
-                                affectedIndices.push(index);
-                            }
-                        });
-                    }
-                }
-                
-                for (let i = 0; i < state.length; i++) {
-                    const digitSpan = document.createElement('span');
-                    digitSpan.className = 'state-digit' + (affectedIndices.includes(i) ? ' affected' : '');
-                    digitSpan.textContent = state[i];
-                    stateItem.appendChild(digitSpan);
-                }
-                stateItem.appendChild(document.createTextNode('>'));
-                
-                stateContainer.appendChild(stateItem);
-                
-                const amplitudeItem = document.createElement('div');
-                amplitudeItem.className = 'amplitude';
-                amplitudeItem.textContent = amplitude;
-                stateContainer.appendChild(amplitudeItem);
-                
-                column.appendChild(stateContainer);
-            }
-            
-            return column;
+            updateArrowPositions(registerName, registerContainer, contentElement, svg);
         }
-
-        let lastTransitions = [];
-
-        function drawTransitions(container, transitions) {
-            console.log('drawTransitions called with transitions:', transitions);
-            lastTransitions = transitions;
-            updateArrowPositions();
-        }
-
-        function updateArrowPositions() {
-            console.log('updateArrowPositions called with lastTransitions:', lastTransitions);
-            const container = document.getElementById('qgantt');
-            const svg = document.getElementById('arrows');
-            const containerRect = container.getBoundingClientRect();
-
-            while (svg.firstChild) {
-                svg.removeChild(svg.firstChild);
-            }
-            
-            svg.style.width = container.scrollWidth + 'px';
-            svg.style.height = container.scrollHeight + 'px';
-            
-            const columns = container.querySelectorAll('.state-column');
-            console.log('Found columns:', columns.length);
-            
-            for (let i = 0; i < columns.length - 1; i++) {
-                const fromColumn = columns[i];
-                const toColumn = columns[i + 1];
-                const fromStates = fromColumn.querySelectorAll('.quantum-state');
-                const toStates = toColumn.querySelectorAll('.quantum-state');
-                
-                console.log(`Column ${i}: fromStates=${fromStates.length}, toStates=${toStates.length}`);
-                
-                const transitions = lastTransitions[i] || {};
-                console.log(`Transitions for column ${i}:`, transitions);
-                
-                fromStates.forEach(fromState => {
-                    const fromStateId = fromState.dataset.state;
-                    const fromRect = fromState.getBoundingClientRect();
-                    const fromX = fromRect.right - containerRect.left;
-                    const fromY = fromRect.top - containerRect.top + fromRect.height / 2;
-                    
-                    const targetStates = transitions[fromStateId] || {};
-                    console.log(`From state ${fromStateId} to states:`, targetStates);
-                    
-                    toStates.forEach(toState => {
-                        const toStateId = toState.dataset.state;
-                        if (targetStates[toStateId]) {
-                            console.log(`Drawing arrow from ${fromStateId} to ${toStateId}`);
-                            const toRect = toState.getBoundingClientRect();
-                            const toX = toRect.left - containerRect.left;
-                            const toY = toRect.top - containerRect.top + toRect.height / 2;
-                            
-                            drawArrow(svg, fromX, fromY, toX, toY, fromStateId, i);
-                        }
-                    });
-                });
-            }
-        }
+    }
+    
+    function createArrows(registerName, registerContainer, contentElement, svg) {
+        const transitions = globalData[registerName].transitions || [];
         
-        function updateQGantt(data, transitions = [], gates = []) {
-            console.log('Updating QGantt with data:', data);
-            console.log('Transitions:', transitions);
-            console.log('Gates:', gates);
+        for (let i = 0; i < transitions.length; i++) {
+            const fromIndex = i;
+            const toIndex = i + 1;
             
-            const container = document.getElementById('qgantt');
-            if (!container) {
-                console.error('QGantt container not found!');
-                return;
+            const fromColumn = contentElement.querySelector(`.state-column[data-column-index="${fromIndex}"]`);
+            const toColumn = contentElement.querySelector(`.state-column[data-column-index="${toIndex}"]`);
+            
+            if (!fromColumn || !toColumn) continue;
+            
+            const transitionMap = transitions[i];
+            
+            for (const [fromState, toStates] of Object.entries(transitionMap)) {
+                const fromStateElement = fromColumn.querySelector(`.quantum-state[data-state="${fromState}"]`);
+                if (!fromStateElement) continue;
+                
+                for (const [toState, amplitude] of Object.entries(toStates)) {
+                    const toStateElement = toColumn.querySelector(`.quantum-state[data-state="${toState}"]`);
+                    if (!toStateElement) continue;
+                    
+                    const bezier = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    bezier.setAttribute('class', 'arrow');
+                    bezier.setAttribute('marker-end', 'url(#global-arrowhead)');
+                    bezier.setAttribute('vector-effect', 'non-scaling-stroke');
+                    bezier.dataset.fromState = fromState;
+                    bezier.dataset.toState = toState;
+                    bezier.dataset.fromColumn = fromIndex;
+                    bezier.dataset.toColumn = toIndex;
+                    
+                    svg.appendChild(bezier);
+                }
             }
-            container.innerHTML = '<svg id="arrows"></svg>';
-            
-            data.forEach((stateData, index) => {
-                const gateInfo = gates[index - 1];
-                container.appendChild(createStateColumn(stateData, index + 1, gateInfo));
-            });
-
-            setTimeout(() => {
-                const svg = document.getElementById('arrows');
-                svg.style.width = container.scrollWidth + 'px';
-                svg.style.height = container.scrollHeight + 'px';
-                drawTransitions(container, transitions);
-            }, 100);
         }
+    }
+    
+    function updateArrowPositions(registerName, registerContainer, contentElement, svg) {
+        const arrows = svg.querySelectorAll('.arrow');
         
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('QGantt page loaded');
-            const container = document.getElementById('qgantt');
-            console.log('QGantt container found:', !!container);
+        const containerWidth = registerContainer.offsetWidth;
+        const containerHeight = registerContainer.offsetHeight;
+        svg.setAttribute('viewBox', `0 0 ${containerWidth} ${containerHeight}`);
+
+        arrows.forEach(arrow => {
+            const fromIndex = parseInt(arrow.dataset.fromColumn);
+            const toIndex = parseInt(arrow.dataset.toColumn);
+            const fromState = arrow.dataset.fromState;
+            const toState = arrow.dataset.toState;
+            
+            const fromColumn = contentElement.querySelector(`.state-column[data-column-index="${fromIndex}"]`);
+            const toColumn = contentElement.querySelector(`.state-column[data-column-index="${toIndex}"]`);
+            
+            if (!fromColumn || !toColumn) return;
+            
+            const fromStateElement = fromColumn.querySelector(`.quantum-state[data-state="${fromState}"]`);
+            const toStateElement = toColumn.querySelector(`.quantum-state[data-state="${toState}"]`);
+            
+            if (!fromStateElement || !toStateElement) return;
+            
+            const registerRect = registerContainer.getBoundingClientRect(); // Container relative to viewport
+            const fromRect = fromStateElement.getBoundingClientRect(); // State element relative to viewport
+            const toRect = toStateElement.getBoundingClientRect(); // State element relative to viewport
+            const scrollX = contentElement.scrollLeft; // <<< Получаем горизонтальную прокрутку контента
+            
+            const fromX = fromRect.right - registerRect.left + scrollX;
+            const fromY = fromRect.top + (fromRect.height / 2) - registerRect.top;
+            const toX = toRect.left - registerRect.left + scrollX;
+            const toY = toRect.top + (toRect.height / 2) - registerRect.top;
+            
+            const controlX = (fromX + toX) / 2;
+            const dAttr = `M ${fromX} ${fromY} C ${controlX} ${fromY}, ${controlX} ${toY}, ${toX} ${toY}`;
+            arrow.setAttribute('d', dAttr);
         });
-    </script>
+    }
+    
+    function setupEventHandlers() {
+        const qgantt = document.getElementById('qgantt');
+        
+        qgantt.addEventListener('scroll', scheduleArrowUpdate);
+        window.addEventListener('resize', scheduleArrowUpdate);
+        qgantt.addEventListener('mousedown', handlePanStart);
+        qgantt.addEventListener('mouseleave', handlePanEnd); // Заканчиваем панорамирование, если мышь ушла
+        qgantt.addEventListener('mouseup', handlePanEnd); // Заканчиваем при отпускании кнопки
+        qgantt.addEventListener('wheel', handleWheelZoom, { passive: false }); // passive: false для preventDefault()
+
+        const observer = new MutationObserver(() => {
+            setupScrollHandlers();
+            scheduleArrowUpdate();
+        });
+        
+        observer.observe(qgantt, {
+            childList: true,
+            subtree: true
+        });
+        
+        setupScrollHandlers();
+    }
+    
+    function setupScrollHandlers() {
+        document.querySelectorAll('.register-content').forEach(content => {
+            if (!content.hasScrollListener) {
+                content.addEventListener('scroll', scheduleArrowUpdate);
+                content.hasScrollListener = true;
+            }
+        });
+    }
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        setupEventHandlers();
+        setTimeout(scheduleArrowUpdate, 200);
+    });
+
+    function createStateColumn(stateData, index, gateInfo, nominalSpecs) {
+        console.log(`--- createStateColumn called - index: ${index}, gateInfo:`, gateInfo, `stateData:`, stateData, `nominalSpecs:`, nominalSpecs);
+        const column = document.createElement('div');
+        column.className = 'state-column';
+        column.dataset.columnIndex = index;
+
+        const header = document.createElement('div');
+        header.className = 'state-header';
+        header.textContent = index;
+        column.appendChild(header);
+        console.log(`Column ${index}: Added header.`);
+
+        if (index === 0 || (gateInfo && gateInfo.name)) {
+            const gateLabel = document.createElement('div');
+            gateLabel.className = 'gate-label';
+            const labelText = index === 0 
+                ? (nominalSpecs && nominalSpecs.length > 0 ? nominalSpecs.map(spec => `${spec.name}[${spec.size}]`).join(', ') : "Initial") 
+                : gateInfo.name;
+            gateLabel.textContent = labelText;
+            column.appendChild(gateLabel);
+            console.log(`Column ${index}: Added gate label: ${labelText}`);
+        }
+
+        console.log(`Column ${index}: Starting state item creation loop.`);
+        for (const [state, amplitude] of Object.entries(stateData)) {
+            console.log(`Column ${index}: Processing state: ${state}, amplitude: ${amplitude}`);
+            const stateContainer = document.createElement('div');
+            stateContainer.className = 'quantum-state';
+            stateContainer.dataset.state = state;
+
+            const n = state.length; // Общая длина реального регистра
+            
+            if (nominalSpecs && nominalSpecs.length > 0) {
+                let firstPart = true;
+                for (const spec of nominalSpecs) {
+                    const startIndex = n - (spec.offset + spec.size); // Используем offset напрямую как начальный индекс в MSB-строке
+                    const endIndex = n - spec.offset; // Конечный индекс = начало + размер
+                    if (startIndex < 0 || endIndex > n || startIndex > endIndex) { // Добавил startIndex > endIndex
+                         console.error(`Invalid indices calculated for spec ${spec.name}: startIndex=${startIndex}, endIndex=${endIndex}, n=${n}, offset=${spec.offset}, size=${spec.size}`);
+                         continue;
+                     }
+                     
+                    const part = state.substring(startIndex, endIndex);
+                    console.log(`Column ${index}, State ${state}: Extracted part for ${spec.name} (offset ${spec.offset}, size ${spec.size}) from indices ${startIndex}-${endIndex-1}: "${part}"`);
+
+                    if (!firstPart) {
+                        const separator = document.createElement('span');
+                        separator.textContent = ''; 
+                        stateContainer.appendChild(separator);
+                    }
+                    
+            const ketStart = document.createElement('span');
+            ketStart.textContent = '|';
+            stateContainer.appendChild(ketStart);
+
+                    for (let j = 0; j < part.length; j++) {
+                        const nominalBitIndex = part.length - 1 - j;
+                        const absoluteIndex = spec.offset + nominalBitIndex;
+                        
+                const digit = document.createElement('span');
+                digit.className = 'state-digit';
+                        digit.textContent = part[j];
+
+                        if (gateInfo && gateInfo.indices && gateInfo.indices.includes(absoluteIndex)) {
+                            console.log(`Column ${index}: Highlighting absolute index ${absoluteIndex} (nominal ${spec.name}[${nominalBitIndex}])`);
+                    digit.classList.add('affected');
+                }
+                stateContainer.appendChild(digit);
+            }
+            
+            const ketEnd = document.createElement('span');
+            ketEnd.textContent = '>';
+            stateContainer.appendChild(ketEnd);
+                    
+                    firstPart = false;
+                }
+            } else {
+                 const ketStart = document.createElement('span');
+                 ketStart.textContent = '|';
+                 stateContainer.appendChild(ketStart);
+                 for (let j = 0; j < state.length; j++) {
+                     const digit = document.createElement('span');
+                     digit.className = 'state-digit';
+                     digit.textContent = state[j];
+                     if (gateInfo && gateInfo.indices && gateInfo.indices.includes(j)) {
+                         digit.classList.add('affected');
+                     }
+                     stateContainer.appendChild(digit);
+                 }
+                 const ketEnd = document.createElement('span');
+                 ketEnd.textContent = '>';
+                 stateContainer.appendChild(ketEnd);
+             }
+
+            const amplLabel = document.createElement('div');
+            amplLabel.className = 'amplitude';
+            amplLabel.textContent = amplitude;
+            stateContainer.appendChild(amplLabel);
+
+            column.appendChild(stateContainer);
+            console.log(`Column ${index}: Appended state container for state ${state}.`);
+            
+            stateContainer.addEventListener('mouseenter', () => {
+                const registerContainer = column.closest('.register-container');
+                const svg = registerContainer.querySelector('.register-svg');
+                const arrows = svg.querySelectorAll('.arrow');
+                
+                arrows.forEach(arrow => {
+                    const arrowFromColumn = parseInt(arrow.dataset.fromColumn);
+                    const arrowFromState = arrow.dataset.fromState;
+                    
+                    if (arrowFromColumn === index && arrowFromState === state) {
+                        arrow.classList.remove('dimmed');
+                    } else {
+                        arrow.classList.add('dimmed');
+                    }
+                });
+            });
+            
+            stateContainer.addEventListener('mouseleave', () => {
+                const registerContainer = column.closest('.register-container');
+                const svg = registerContainer.querySelector('.register-svg');
+                const arrows = svg.querySelectorAll('.arrow');
+                
+                arrows.forEach(arrow => {
+                    arrow.classList.remove('dimmed');
+                });
+            });
+        }
+        console.log(`Column ${index}: Finished state item creation loop.`);
+        return column;
+    }
+
+    function createRegisterContainer(realRegisterName, registerData, nominalSpecs) {
+        const container = document.createElement('div');
+        container.className = 'register-container';
+        container.id = `register-${realRegisterName}`;
+
+        const title = document.createElement('div');
+        title.className = 'register-title';
+        title.style.cursor = 'grab';
+        
+        if (nominalSpecs && nominalSpecs.length > 0) {
+            title.textContent = nominalSpecs.map(spec => `${spec.name}[${spec.size}]`).join(', ');
+        } else {
+            title.textContent = realRegisterName;
+        }
+        container.appendChild(title);
+        
+        title.addEventListener('mousedown', (event) => {
+            onDragStart(event, realRegisterName, container);
+        });
+
+        const content = document.createElement('div');
+        content.className = 'register-content';
+        container.appendChild(content);
+        
+        container.addEventListener('mousedown', handleContainerMouseDown);
+        container.addEventListener('mousemove', handleContainerCursor);
+        container.addEventListener('mouseleave', () => { 
+            if (!isResizing) {
+                container.style.cursor = 'default'; 
+            } 
+        });
+        
+        return { container, content };
+    }
+
+    function updateMultipleQGantt(data) {
+        console.log("--- updateMultipleQGantt called ---");
+        const container = document.getElementById('qgantt');
+        let maxBottom = 10;
+        let maxRight = 10;
+        const registerPositions = {};
+        const horizontalSpacing = 50;
+        const verticalSpacing = 30;
+
+        console.log("Container element:", container);
+        console.log("Container innerHTML cleared.");
+
+        let mergeSvg = document.getElementById('merge-svg-layer');
+        if (mergeSvg) mergeSvg.innerHTML = '';
+
+        if (!data || Object.keys(data).length === 0) {
+             console.log("Received empty data, clearing QGantt container and returning.");
+            scheduleArrowUpdate(); 
+            return;
+        }
+        
+        console.log("Received data:", JSON.stringify(data)); 
+        globalData = data;
+        console.log("Global data updated.");
+
+        const zoomWrapper = document.getElementById('qgantt-zoom-wrapper');
+        if (!zoomWrapper) {
+            console.error("Zoom wrapper not found!");
+            return;
+        }
+        mergeSvg = zoomWrapper.querySelector('#merge-svg-layer');
+        if (mergeSvg) {
+            mergeSvg.innerHTML = '';
+        } else {
+             console.error("Merge SVG layer not found inside zoom wrapper!");
+             const newMergeSvgLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+             newMergeSvgLayer.id = 'merge-svg-layer';
+             newMergeSvgLayer.style.position = 'absolute'; newMergeSvgLayer.style.top = '0'; newMergeSvgLayer.style.left = '0';
+             newMergeSvgLayer.style.width = '100%'; newMergeSvgLayer.style.height = '100%';
+             newMergeSvgLayer.style.pointerEvents = 'none'; newMergeSvgLayer.style.zIndex = '20';
+             zoomWrapper.appendChild(newMergeSvgLayer);
+        }
+
+        zoomWrapper.querySelectorAll('.register-container').forEach(el => el.remove());
+        const sortedRegisters = Object.entries(data).sort(([,a], [,b]) => {
+            const aHasParents = a.parents && a.parents.length > 0;
+            const bHasParents = b.parents && b.parents.length > 0;
+            if (!aHasParents && bHasParents) return -1;
+            if (aHasParents && !bHasParents) return 1;
+            return 0;
+        });
+
+        console.log("Starting to process registers...");
+        for (const [realRegisterName, registerData] of sortedRegisters) {
+            console.log(`Processing register: ${realRegisterName}`, registerData);
+            
+            let currentTop = 10;
+            let currentLeft = 10;
+
+            const parents = registerData.parents || [];
+            if (parents.length > 0) {
+                let maxParentRight = 0;
+                let firstParentTop = -1;
+                let validParents = 0;
+                parents.forEach(pName => {
+                    if (registerPositions[pName]) {
+                        const pPos = registerPositions[pName];
+                        maxParentRight = Math.max(maxParentRight, pPos.left + pPos.width);
+                        if (firstParentTop < 0) {
+                            firstParentTop = pPos.top;
+                        }
+                        validParents++;
+                    }
+                });
+                if (validParents > 0) {
+                    currentLeft = maxParentRight + horizontalSpacing;
+                    currentTop = (firstParentTop >= 0) ? firstParentTop : maxBottom;
+                } else {
+                    currentLeft = 10;
+                     currentTop = maxBottom;
+                }
+                maxRight = Math.max(maxRight, currentLeft + horizontalSpacing);
+            } else {
+                currentLeft = 10;
+                 currentTop = maxBottom;
+            }
+            
+            const nominalSpecs = registerData.nominalSpecs || [];
+            const { container: registerContainer, content } = createRegisterContainer(realRegisterName, registerData, nominalSpecs);
+
+            registerContainer.style.position = 'absolute';
+            registerContainer.style.left = '-9999px';
+            registerContainer.style.top = '-9999px';
+            zoomWrapper.appendChild(registerContainer);
+            
+            console.log(`Created register container for ${realRegisterName}:`, registerContainer);
+            console.log(`Appended register container for ${realRegisterName}.`);
+
+            const states = registerData.states;
+            const gateNames = registerData.gateNames;
+            console.log(`Register ${realRegisterName} - States:`, states, `GateNames:`, gateNames);
+            
+            if (!states || states.length === 0) {
+                console.log(`Register ${realRegisterName} has no states, skipping column creation.`);
+                continue;
+            }
+            
+            console.log(`Register ${realRegisterName} - Starting column creation loop (states.length: ${states.length}).`);
+            for (let i = 0; i < states.length; i++) {
+                console.log(`Register ${realRegisterName} - Creating column for state index ${i}`);
+                const gateInfo = i > 0 ? gateNames[i - 1] : null;
+                console.log(`Register ${realRegisterName} - Gate info for column ${i}:`, gateInfo);
+                
+                const column = createStateColumn(states[i], i, gateInfo, nominalSpecs);
+                
+                console.log(`Register ${realRegisterName} - Created column element for index ${i}:`, column);
+                content.appendChild(column);
+                console.log(`Register ${realRegisterName} - Appended column for index ${i}.`);
+            }
+            console.log(`Register ${realRegisterName} - Finished column creation loop.`);
+
+            const calculatedWidth = registerContainer.offsetWidth;
+            const calculatedHeight = registerContainer.offsetHeight;
+            console.log(`Measured ${realRegisterName}: w=${calculatedWidth}, h=${calculatedHeight}`);
+
+            let overlapFound = true;
+            let attempts = 0;
+            while (overlapFound && attempts < 100) {
+                 overlapFound = false;
+                 attempts++;
+                 const currentRect = {
+                      left: currentLeft, top: currentTop,
+                      right: currentLeft + calculatedWidth, bottom: currentTop + calculatedHeight
+                 };
+                for (const [name, existingPos] of Object.entries(registerPositions)) {
+                    const existingRect = {
+                         left: existingPos.left, top: existingPos.top,
+                         right: existingPos.left + existingPos.width, bottom: existingPos.top + existingPos.height
+                    };
+                    if (currentRect.left < existingRect.right + horizontalSpacing &&
+                        currentRect.right + horizontalSpacing > existingRect.left &&
+                        currentRect.top < existingRect.bottom + verticalSpacing && 
+                        currentRect.bottom + verticalSpacing > existingRect.top) 
+                    {
+                         currentTop = existingRect.bottom + verticalSpacing;
+                         overlapFound = true;
+                         break;
+                    }
+                }
+             }
+            if (attempts >= 100) console.warn("Overlap check limit reached for", realRegisterName);
+
+            registerContainer.style.left = `${currentLeft}px`;
+            registerContainer.style.top = `${currentTop}px`;
+
+            registerPositions[realRegisterName] = { 
+                top: currentTop, 
+                left: currentLeft, 
+                width: calculatedWidth, 
+                height: calculatedHeight 
+            };
+            if (globalData[realRegisterName]) {
+                globalData[realRegisterName].position = registerPositions[realRegisterName];
+            }
+            
+            maxBottom = Math.max(maxBottom, currentTop + calculatedHeight + verticalSpacing);
+            maxRight = Math.max(maxRight, currentLeft + calculatedWidth + horizontalSpacing);
+        }
+        console.log("Finished processing registers.");
+
+        zoomWrapper.style.width = `${maxRight}px`;
+        zoomWrapper.style.height = `${maxBottom}px`;
+
+        if (mergeSvg) {
+            mergeSvg.setAttribute('viewBox', `0 0 ${maxRight} ${maxBottom}`);
+        }
+
+        console.log("Scheduling arrow update.");
+        setTimeout(() => {
+            scheduleArrowUpdate();
+            drawMergeArrows();
+        }, 150);
+    }
+
+    function drawMergeArrows() {
+        let mergeSvg = document.getElementById('merge-svg-layer');
+        const qganttContainer = document.getElementById('qgantt');
+        if (!mergeSvg || !qganttContainer) return;
+        mergeSvg.innerHTML = '';
+
+
+        for (const [childName, childData] of Object.entries(globalData)) {
+            const parents = childData.parents || [];
+            if (parents.length === 0 || !childData.position) continue;
+            
+            const childPos = childData.position;
+            const toX = childPos.left - 5;
+            const toY = childPos.top + childPos.height / 2;
+
+
+            for (const parentName of parents) {
+                const parentData = globalData[parentName];
+                if (!parentData || !parentData.position) continue;
+                
+                const parentPos = parentData.position;
+                const fromX = parentPos.left + parentPos.width + 5;
+                const fromY = parentPos.top + parentPos.height / 2;
+
+
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', fromX);
+                line.setAttribute('y1', fromY);
+                line.setAttribute('x2', toX);
+                line.setAttribute('y2', toY);
+                line.setAttribute('stroke', '#333333');
+                line.setAttribute('stroke-width', '1.5');
+                line.setAttribute('stroke-dasharray', '4, 2');
+                line.setAttribute('marker-end', 'url(#merge-arrowhead)');
+                line.setAttribute('vector-effect', 'non-scaling-stroke');
+                mergeSvg.appendChild(line);
+            }
+        }
+    }
+
+    function onDragStart(event, registerName, element) {
+        if (event.button !== 0) return;
+
+        isDragging = true;
+        dragTarget = element;
+        dragRegisterName = registerName;
+        
+        startX = event.clientX;
+        startY = event.clientY;
+        
+        const currentPos = globalData[dragRegisterName]?.position;
+        if (!currentPos) {
+             isDragging = false;
+             return;
+        }
+        initialLeft = currentPos.left;
+        initialTop = currentPos.top;
+
+        dragTarget.style.cursor = 'grabbing';
+        dragTarget.style.zIndex = '1000'; // Поверх других
+
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('mouseup', onDragEnd);
+        
+        event.preventDefault();
+    }
+
+    function onDragMove(event) {
+        if (!isDragging || !dragTarget || !dragRegisterName) return;
+
+        const dx = event.clientX - startX;
+        const dy = event.clientY - startY;
+
+        const newLeft = initialLeft + dx / currentScale;
+        const newTop = initialTop + dy / currentScale;
+
+        dragTarget.style.left = `${newLeft}px`;
+        dragTarget.style.top = `${newTop}px`;
+
+        const pos = globalData[dragRegisterName].position;
+        pos.left = newLeft;
+        pos.top = newTop;
+
+        drawMergeArrows();
+        const svg = dragTarget.querySelector('.register-svg');
+        const contentElement = dragTarget.querySelector('.register-content');
+        if (svg && contentElement) {
+            updateArrowPositions(dragRegisterName, dragTarget, contentElement, svg);
+        }
+    }
+
+    function onDragEnd(event) {
+        if (!isDragging) return;
+
+        if (dragTarget) {
+            dragTarget.style.cursor = 'grab';
+            dragTarget.style.zIndex = '';
+        }
+        
+        isDragging = false;
+        dragTarget = null;
+        dragRegisterName = null;
+
+        document.removeEventListener('mousemove', onDragMove);
+        document.removeEventListener('mouseup', onDragEnd);
+    }
+
+    function getResizeMode(event, element) {
+        const rect = element.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const width = element.offsetWidth;
+        const height = element.offsetHeight;
+        
+        const onLeftEdge = x < resizeBorderThreshold;
+        const onRightEdge = x > width - resizeBorderThreshold;
+        const onTopEdge = y < resizeBorderThreshold;
+        const onBottomEdge = y > height - resizeBorderThreshold;
+
+        if (onTopEdge && onLeftEdge) return 'top-left';
+        if (onTopEdge && onRightEdge) return 'top-right';
+        if (onBottomEdge && onLeftEdge) return 'bottom-left';
+        if (onBottomEdge && onRightEdge) return 'bottom-right';
+        if (onLeftEdge) return 'left';
+        if (onRightEdge) return 'right';
+        if (onTopEdge) return 'top';
+        if (onBottomEdge) return 'bottom';
+        
+        return null; // Не на границе
+    }
+
+    function handleContainerCursor(event) {
+        if (isDragging || isResizing) return;
+
+        const container = event.currentTarget; // register-container
+        const mode = getResizeMode(event, container);
+        
+        if (event.target.classList.contains('register-title')) {
+            container.style.cursor = 'grab';
+            return;
+        }
+
+        switch (mode) {
+            case 'left':
+            case 'right':
+                container.style.cursor = 'ew-resize';
+                break;
+            case 'top':
+            case 'bottom':
+                container.style.cursor = 'ns-resize';
+                break;
+            case 'top-left':
+            case 'bottom-right':
+                container.style.cursor = 'nwse-resize';
+                break;
+            case 'top-right':
+            case 'bottom-left':
+                container.style.cursor = 'nesw-resize';
+                break;
+            default:
+                container.style.cursor = 'default';
+                break;
+        }
+    }
+
+    function handleContainerMouseDown(event) {
+        if (event.button !== 0) return;
+
+        const element = event.currentTarget; // Это register-container
+        const registerName = element.id.replace('register-','');
+
+        const clickedMode = getResizeMode(event, element);
+
+        if (clickedMode) {
+            isResizing = true;
+            resizeTarget = element;
+            resizeRegisterName = registerName;
+            resizeMode = clickedMode;
+
+            startX = event.clientX;
+            startY = event.clientY;
+
+            const currentPos = globalData[resizeRegisterName]?.position;
+            if (!currentPos) {
+                isResizing = false;
+                return;
+            }
+            initialLeft = currentPos.left;
+            initialTop = currentPos.top;
+            initialWidth = currentPos.width;
+            initialHeight = currentPos.height;
+
+            element.style.cursor = window.getComputedStyle(element).cursor;
+
+            document.addEventListener('mousemove', handleContainerMouseMove);
+            document.addEventListener('mouseup', handleContainerMouseUp);
+
+            event.stopPropagation();
+            event.preventDefault();
+        } else if (event.target.classList.contains('register-title')) {
+            onDragStart(event, registerName, element);
+        }
+    }
+
+    function handleContainerMouseMove(event) {
+        if (!isResizing || !resizeTarget || !resizeRegisterName) return;
+
+        const dx = event.clientX - startX;
+        const dy = event.clientY - startY;
+
+        let newWidth = initialWidth;
+        let newHeight = initialHeight;
+        let newLeft = initialLeft;
+        let newTop = initialTop;
+
+        if (resizeMode.includes('right')) {
+            newWidth = Math.max(minContainerWidth, initialWidth + dx);
+        }
+        if (resizeMode.includes('left')) {
+            newWidth = Math.max(minContainerWidth, initialWidth - dx);
+            newLeft = initialLeft + dx; // Двигаем левую границу
+            if (newWidth === minContainerWidth) {
+                newLeft = initialLeft + initialWidth - minContainerWidth;
+            }
+        }
+        if (resizeMode.includes('bottom')) {
+            newHeight = Math.max(minContainerHeight, initialHeight + dy);
+        }
+        if (resizeMode.includes('top')) {
+            newHeight = Math.max(minContainerHeight, initialHeight - dy);
+            newTop = initialTop + dy; // Двигаем верхнюю границу
+            if (newHeight === minContainerHeight) {
+                newTop = initialTop + initialHeight - minContainerHeight;
+            }
+        }
+
+        resizeTarget.style.width = `${newWidth}px`;
+        resizeTarget.style.height = `${newHeight}px`;
+        resizeTarget.style.left = `${newLeft}px`;
+        resizeTarget.style.top = `${newTop}px`;
+
+        const pos = globalData[resizeRegisterName].position;
+        pos.width = newWidth;
+        pos.height = newHeight;
+        pos.left = newLeft;
+        pos.top = newTop;
+
+        scheduleArrowUpdate();
+    }
+
+    function handleContainerMouseUp(event) {
+        if (!isResizing) return;
+
+        isResizing = false;
+        resizeMode = null;
+        resizeTarget = null;
+        resizeRegisterName = null;
+
+        document.removeEventListener('mousemove', handleContainerMouseMove);
+        document.removeEventListener('mouseup', handleContainerMouseUp);
+    }
+
+    function handlePanStart(event) {
+        if (event.target.closest('.register-container') || isResizing) {
+            return;
+        }
+        
+        isPanning = true;
+        const container = event.currentTarget; // qgantt
+        panStartX = event.clientX;
+        panStartY = event.clientY;
+        initialScrollLeft = container.scrollLeft;
+        initialScrollTop = container.scrollTop;
+        container.style.cursor = 'grabbing';
+        container.style.userSelect = 'none';
+
+        document.addEventListener('mousemove', handlePanMove);
+        window.addEventListener('mouseup', handlePanEnd, { once: true });
+
+        event.preventDefault();
+    }
+
+    function handlePanMove(event) {
+        if (!isPanning) return;
+        
+        const container = document.getElementById('qgantt');
+        if (!container) return;
+        
+        const dx = event.clientX - panStartX;
+        const dy = event.clientY - panStartY;
+
+        container.scrollLeft = initialScrollLeft - dx;
+        container.scrollTop = initialScrollTop - dy;
+
+    }
+
+    function handlePanEnd(event) {
+        if (!isPanning) return;
+        
+        isPanning = false;
+        const container = document.getElementById('qgantt');
+        if (container) {
+             container.style.cursor = 'default';
+             container.style.userSelect = '';
+        }
+        document.removeEventListener('mousemove', handlePanMove);
+    }
+
+    function applyZoom() {
+        const wrapper = document.getElementById('qgantt-zoom-wrapper');
+        if (wrapper) {
+            wrapper.style.transform = `scale(${currentScale})`;
+            updateArrows();
+            drawMergeArrows();
+        }
+    }
+
+    function zoomIn() {
+        currentScale = Math.min(maxScale, currentScale + scaleStep);
+        applyZoom();
+    }
+
+    function zoomOut() {
+        currentScale = Math.max(minScale, currentScale - scaleStep);
+        applyZoom();
+    }
+
+    function zoomReset() {
+        currentScale = 1.0;
+        applyZoom();
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.isContentEditable) {
+            return; 
+        }
+
+        if (event.ctrlKey) {
+            switch (event.key) {
+                case '+':
+                case '=':
+                    event.preventDefault();
+                    zoomIn();
+                    break;
+                case '-':
+                    event.preventDefault();
+                    zoomOut();
+                    break;
+                case '0':
+                    event.preventDefault();
+                    zoomReset();
+                    break;
+            }
+        }
+    });
+
+    function handleWheelZoom(event) {
+        if (!event.ctrlKey) {
+            return;
+        }
+        
+        event.preventDefault();
+
+        if (event.deltaY < 0) {
+            zoomIn();
+        } else if (event.deltaY > 0) {
+            zoomOut();
+        }
+     }
+</script>
 </body>
 </html> 

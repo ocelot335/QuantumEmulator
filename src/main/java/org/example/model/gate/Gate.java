@@ -1,6 +1,7 @@
 package org.example.model.gate;
 
 import javafx.util.Pair;
+import org.example.model.qubit.ChunkedComplexArray;
 import org.example.model.qubit.Complex;
 import org.example.model.qubit.QubitRegister;
 
@@ -12,14 +13,14 @@ public abstract class Gate implements Serializable {
     protected final QubitRegister targetRegister;
     protected final GateTrace trace;
     protected final BitSet newState;
-    protected final Complex[] newAmplitudes;
+    protected final ChunkedComplexArray newAmplitudes;
 
     protected Gate(QubitRegister register, Integer[] targetQubitsIndices) {
         this.targetQubitsIndices = targetQubitsIndices;
         this.targetRegister = register;
         this.trace = new GateTrace();
         this.newState = new BitSet(register.getStates().length());
-        this.newAmplitudes = new Complex[register.getAmplitudes().length];
+        this.newAmplitudes = new ChunkedComplexArray();
     }
 
     protected void addAmplitude(Integer from, Integer to, Complex amplitude) {
@@ -29,12 +30,11 @@ public abstract class Gate implements Serializable {
 
         if (!newState.get(to)) {
             newState.set(to, true);
-            newAmplitudes[to] = amplitude;
+            newAmplitudes.set(to, amplitude);
         } else {
-            newAmplitudes[to] = newAmplitudes[to].add(amplitude);
-            if (newAmplitudes[to].equals(Complex.getZero())) {
+            newAmplitudes.set(to, newAmplitudes.get(to).add(amplitude));
+            if (newAmplitudes.get(to).equals(Complex.getZero())) {
                 newState.set(to, false);
-                newAmplitudes[to] = null;
             }
         }
 
@@ -46,11 +46,11 @@ public abstract class Gate implements Serializable {
 
     public GateTrace apply() {
         BitSet oldState = targetRegister.getStates();
-        Complex[] oldAmplitudes = targetRegister.getAmplitudes();
+        ChunkedComplexArray oldAmplitudes = targetRegister.getAmplitudes();
 
         for (int i = oldState.nextSetBit(0); i >= 0; i = oldState.nextSetBit(i + 1)) {
-            for (Pair<Integer, Complex> toWithCoef: getTosAndItsCoefs(i)) {
-                addAmplitude(i, toWithCoef.getKey(), oldAmplitudes[i].multiply(toWithCoef.getValue()));
+            for (Pair<Integer, Complex> toWithCoef : getTosAndItsCoefs(i)) {
+                addAmplitude(i, toWithCoef.getKey(), oldAmplitudes.get(i).multiply(toWithCoef.getValue()));
             }
         }
         targetRegister.setStates(newState);

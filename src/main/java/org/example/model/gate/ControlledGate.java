@@ -4,8 +4,6 @@ import javafx.util.Pair;
 import org.example.model.qubit.Complex;
 import org.example.model.qubit.QubitRegister;
 
-import java.util.BitSet;
-
 public class ControlledGate extends Gate {
     private final Gate gateToControl;
     private final Integer[] controlQubitsIndices;
@@ -17,7 +15,7 @@ public class ControlledGate extends Gate {
     }
 
     public Pair<Integer, Complex>[] getTosAndItsCoefs(Integer state) {
-        if((state>>controlQubitsIndices[0])%2==1) {
+        if ((state >> controlQubitsIndices[0]) % 2 == 1) {
             return gateToControl.getTosAndItsCoefs(state);
         } else {
             return new Pair[]{new Pair<>(state, Complex.getOne())};

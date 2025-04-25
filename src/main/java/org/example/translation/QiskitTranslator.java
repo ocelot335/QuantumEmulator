@@ -14,7 +14,7 @@ public class QiskitTranslator implements QuantumTranslator {
     @Override
     public String translate(List<Command> commands, Emulation context) {
         StringBuilder code = new StringBuilder();
-        
+
         code.append("from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister\n");
         code.append("from qiskit_aer import AerSimulator\n");
         code.append("from qiskit.visualization import plot_histogram\n");
@@ -51,7 +51,7 @@ public class QiskitTranslator implements QuantumTranslator {
             if (command.getType() == Command.CommandType.APPLY_GATE) {
                 String gate = (String) command.getArgument("gate");
                 List<Map<String, Object>> operands = (List<Map<String, Object>>) command.getArgument("operands");
-                
+
                 switch (gate) {
                     case "H":
                         String hReg = (String) operands.get(0).get("register");
@@ -145,7 +145,7 @@ public class QiskitTranslator implements QuantumTranslator {
         code.append("job = simulator.run(qc, shots=1000)\n");
         code.append("result = job.result()\n");
         code.append("counts = result.get_counts(qc)\n\n");
-        
+
         code.append("# Визуализация результатов\n");
         code.append("plt.figure(figsize=(10, 6))\n");
         code.append("plot_histogram(counts)\n");

@@ -13,7 +13,7 @@ public class CirqTranslator implements QuantumTranslator {
     @Override
     public String translate(List<Command> commands, Emulation context) {
         StringBuilder code = new StringBuilder();
-        
+
         code.append("import cirq\n");
         code.append("import numpy as np\n\n");
 
@@ -41,7 +41,7 @@ public class CirqTranslator implements QuantumTranslator {
             if (command.getType() == Command.CommandType.APPLY_GATE) {
                 String gate = (String) command.getArgument("gate");
                 List<Map<String, Object>> operands = (List<Map<String, Object>>) command.getArgument("operands");
-                
+
                 switch (gate) {
                     case "H":
                         String hReg = (String) operands.get(0).get("register");

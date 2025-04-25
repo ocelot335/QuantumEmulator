@@ -1,7 +1,5 @@
 package org.example.syntax;
 
-import javafx.scene.control.TextArea;
-import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.model.StyleSpans;
 import org.fxmisc.richtext.model.StyleSpansBuilder;
 
@@ -14,14 +12,14 @@ import java.util.regex.Pattern;
 
 public class SyntaxHighlighter {
     private static final Set<String> OPERATIONS = new HashSet<>(Set.of(
-        "CR","CQ","H", "X", "Y", "Z", "S", "T",
-        "SWAP", "INC", "DEC", "NOT",
-        "CX","CNOT", "CCNOT", "CY", "CZ", "CH", "CS", "CT"
+            "CR", "CQ", "H", "X", "Y", "Z", "S", "T",
+            "SWAP", "INC", "DEC", "NOT",
+            "CX", "CNOT", "CCNOT", "CY", "CZ", "CH", "CS", "CT"
     ));
 
     private static final String OPERATION_PATTERN = String.join("|", OPERATIONS);
     private static final Pattern PATTERN = Pattern.compile(
-        "\\b(" + OPERATION_PATTERN + ")\\b"
+            "\\b(" + OPERATION_PATTERN + ")\\b"
     );
 
     public static StyleSpans<Collection<String>> computeHighlighting(String text) {
@@ -29,7 +27,7 @@ public class SyntaxHighlighter {
         int lastKwEnd = 0;
         StyleSpansBuilder<Collection<String>> spansBuilder = new StyleSpansBuilder<>();
 
-        while(matcher.find()) {
+        while (matcher.find()) {
             String styleClass = "operation";
             spansBuilder.add(Collections.emptyList(), matcher.start() - lastKwEnd);
             spansBuilder.add(Collections.singleton(styleClass), matcher.end() - matcher.start());

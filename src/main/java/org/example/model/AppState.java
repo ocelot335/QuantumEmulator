@@ -1,40 +1,31 @@
 package org.example.model;
 
 import lombok.Data;
-import org.example.model.qubit.Complex;
+import org.example.model.gate.oracle.OracleDefinition;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Stack;
+import java.util.*;
 
 @Data
 public class AppState implements Serializable {
     private Emulation context;
-    private Stack<Emulation> stateHistory;
+    private Map<String, OracleDefinition> definedOracles;
     private Stack<String> outputHistory;
     private List<String> commandList;
     private Integer outputCounter;
     private int currentLineIndex;
-    private List<Map<String, Complex>> qganttStateHistory;
-    private List<Map<String, Map<String, Complex>>> qganttTransitionHistory;
-    private List<String> gateNamesHistory;
-    private int numQubits;
+    private Map<String, Object> qganttRegistersData;
 
-    public AppState(Emulation context, Stack<Emulation> stateHistory, Stack<String> outputHistory,
+    public AppState(Emulation context, Stack<String> outputHistory,
                     List<String> commandList, Integer outputCounter, int currentLineIndex,
-                    List<Map<String, Complex>> qganttStateHistory,
-                    List<Map<String, Map<String, Complex>>> qganttTransitionHistory, List<String> gateNamesHistory, int numQubits) {
+                    Map<String, OracleDefinition> definedOracles,
+                    Map<String, Object> qganttRegistersData) {
         this.context = context;
-        this.stateHistory = stateHistory;
         this.outputHistory = outputHistory;
         this.commandList = new ArrayList<>(commandList);
         this.outputCounter = outputCounter;
         this.currentLineIndex = currentLineIndex;
-        this.qganttStateHistory = new ArrayList<>(qganttStateHistory);
-        this.qganttTransitionHistory = new ArrayList<>(qganttTransitionHistory);
-        this.gateNamesHistory = new ArrayList<>(gateNamesHistory);
-        this.numQubits = numQubits;
+        this.definedOracles = new HashMap<>(definedOracles);
+        this.qganttRegistersData = qganttRegistersData;
     }
 }

@@ -1,7 +1,5 @@
 package org.example.script;
 
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class Command {
@@ -9,7 +7,9 @@ public class Command {
     public enum CommandType {
         CREATE_REGISTER,
         APPLY_GATE,
-        MEASURE
+        MEASURE,
+        DEFINE_ORACLE_CSV,
+        APPLY_ORACLE
     }
 
     private final CommandType type;

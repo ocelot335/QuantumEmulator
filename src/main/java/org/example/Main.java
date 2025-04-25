@@ -6,34 +6,36 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.example.model.Emulation;
+import org.example.model.qubit.Complex;
+import org.example.model.qubit.QubitRegister;
+import org.example.qgantt.QGanttManager;
 import org.example.script.Command;
 import org.example.script.Parser;
+import org.example.syntax.SyntaxHighlighter;
 import org.example.translation.QuantumTranslator;
 import org.example.translation.TranslatorFactory;
-import org.example.qgantt.QGanttManager;
 import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.LineNumberFactory;
-import org.example.syntax.SyntaxHighlighter;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Stack;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class Main extends Application {
 
     private Emulation context = new Emulation();
-    private Integer outputCounter = 1;
+    private Integer versionCounter = 0;
     private int currentLineIndex = -1;
     private List<String> commandList = new ArrayList<>();
-    private Stack<Emulation> stateHistory = new Stack<>();
     private Stack<String> outputHistory = new Stack<>();
     private CodeArea commandInput;
     private CodeArea measurementOutput;
@@ -84,7 +86,7 @@ public class Main extends Application {
                 try (PrintWriter writer = new PrintWriter(file)) {
                     writer.write(commandInput.getText());
                 } catch (IOException ex) {
-                    ex.printStackTrace();
+                    measurementOutput.appendText("Ошибка при сохранении скрипта: " + ex.getMessage() + "\n");
                 }
             }
         });
@@ -106,10 +108,12 @@ public class Main extends Application {
                     commandInput.replaceText(content.toString());
                     commandList.clear();
                     currentLineIndex = -1;
-                    stateHistory.clear();
                     outputHistory.clear();
+                    versionCounter = 0;
+                    qganttManager.clear();
+                    measurementOutput.clear();
                 } catch (IOException ex) {
-                    ex.printStackTrace();
+                    measurementOutput.appendText("Ошибка при загрузке скрипта: " + ex.getMessage() + "\n");
                 }
             }
         });
@@ -130,19 +134,17 @@ public class Main extends Application {
 
                     org.example.model.AppState appState = new org.example.model.AppState(
                             currentState,
-                            stateHistory,
                             newOutputHistory,
                             commandList,
-                            outputCounter,
+                            versionCounter,
                             currentLineIndex,
-                            qganttManager.getStateHistory(),
-                            qganttManager.getTransitions(),
-                            qganttManager.getGateNames(),
-                            qganttManager.getNumQubits()
+                            currentState.getDefinedOracles(),
+                            qganttManager.getRegistersData()
                     );
                     oos.writeObject(appState);
+                    measurementOutput.appendText("Модель успешно сохранена\n");
                 } catch (IOException ex) {
-                    ex.printStackTrace();
+                    measurementOutput.appendText("Ошибка при сохранении модели: " + ex.getMessage() + "\n");
                 }
             }
         });
@@ -159,27 +161,31 @@ public class Main extends Application {
                     org.example.model.AppState appState = (org.example.model.AppState) ois.readObject();
 
                     context = appState.getContext();
-                    stateHistory = appState.getStateHistory();
                     outputHistory = appState.getOutputHistory();
                     commandList = appState.getCommandList();
-                    outputCounter = appState.getOutputCounter();
+                    versionCounter = appState.getOutputCounter();
                     currentLineIndex = appState.getCurrentLineIndex();
 
                     commandInput.replaceText(String.join("\n", commandList));
-                    stateHistory.push(context);
 
                     qganttManager.clear();
-                    qganttManager.setNumQubits(appState.getNumQubits());
-                    qganttManager.restoreHistory(appState.getQganttStateHistory(),
-                            appState.getQganttTransitionHistory(), appState.getGateNamesHistory());
+
+                    qganttManager.restoreRegistersData(
+                            appState.getQganttRegistersData()
+                    );
+
+                    qganttManager.updateDiagramToStep(versionCounter);
 
                     if (currentLineIndex >= 0 && currentLineIndex < commandList.size()) {
                         highlightCurrentLine(commandInput, currentLineIndex);
                     } else {
                         commandInput.deselect();
                     }
-                } catch (IOException | ClassNotFoundException ex) {
-                    ex.printStackTrace();
+                    measurementOutput.appendText("Модель успешно загружена\n");
+                } catch (IOException ex) {
+                    measurementOutput.appendText("Ошибка при загрузке модели: " + ex.getMessage() + "\n");
+                } catch (ClassNotFoundException ex) {
+                    measurementOutput.appendText("Ошибка: Неверный формат файла модели\n");
                 }
             }
         });
@@ -201,10 +207,9 @@ public class Main extends Application {
 
         executeAllButton.setOnAction(e -> {
             String commands = commandInput.getText().trim();
-            outputCounter = 1;
+            versionCounter = 0;
             currentLineIndex = -1;
             context = new Emulation();
-            stateHistory.clear();
             outputHistory.clear();
             qganttManager.clear();
             measurementOutput.clear();
@@ -215,53 +220,86 @@ public class Main extends Application {
                     String command = commandList.get(i).trim();
                     if (!command.isEmpty()) {
                         currentLineIndex = i;
-                        executeCommand(command, null, true);
+                        executeCommand(command);
                         highlightCurrentLine(commandInput, i);
                     }
                 }
+                if (currentLineIndex >= 0) {
+                    highlightCurrentLine(commandInput, currentLineIndex);
+                }
+                qganttManager.updateDiagramToStep(versionCounter);
             }
         });
 
         stepForwardButton.setOnAction(e -> {
             String commands = commandInput.getText().trim();
-            if (!commands.isEmpty()) {
-                if (commandList.isEmpty() || !commands.equals(String.join("\n", commandList))) {
-                    commandList = Arrays.asList(commands.split("\\r?\\n"));
-                    currentLineIndex = -1;
-                    context = new Emulation();
-                    outputCounter = 1;
-                    stateHistory.clear();
-                    outputHistory.clear();
-                }
+            if (commands.isEmpty()) {
+                return;
+            }
 
-                currentLineIndex++;
-                while (currentLineIndex < commandList.size() &&
-                        commandList.get(currentLineIndex).trim().isEmpty()) {
-                    currentLineIndex++;
-                }
+            List<String> currentCommands = Arrays.asList(commands.split("\\r?\\n"));
+            boolean scriptChanged = commandList.isEmpty() || !currentCommands.equals(commandList);
 
-                if (currentLineIndex < commandList.size()) {
-                    String command = commandList.get(currentLineIndex).trim();
-                    executeCommand(command, null, true);
+            if (scriptChanged) {
+                commandList = currentCommands;
+                currentLineIndex = -1;
+                context = new Emulation();
+                versionCounter = 0;
+                outputHistory.clear();
+                qganttManager.clear();
+                commandInput.deselect();
+                measurementOutput.clear();
+            }
+
+            int nextLineIndex = currentLineIndex + 1;
+            while (nextLineIndex < commandList.size() &&
+                    commandList.get(nextLineIndex).trim().isEmpty()) {
+                nextLineIndex++;
+            }
+
+            if (nextLineIndex >= commandList.size()) {
+                return;
+            }
+
+            int maxVersionInHistory = qganttManager.getMaxVersion();
+            int targetVersion = versionCounter + 1;
+
+            if (targetVersion > maxVersionInHistory) {
+                currentLineIndex = nextLineIndex;
+                String command = commandList.get(currentLineIndex).trim();
+
+                int versionBeforeExecute = versionCounter;
+
+                executeCommand(command);
+
+                if (versionCounter > versionBeforeExecute) {
+                    qganttManager.updateDiagramToStep(versionCounter);
                     highlightCurrentLine(commandInput, currentLineIndex);
                 } else {
-                    currentLineIndex--;
+                    if (currentLineIndex >= 0) highlightCurrentLine(commandInput, currentLineIndex);
                 }
+
+            } else {
+                currentLineIndex = nextLineIndex;
+                versionCounter = targetVersion;
+                qganttManager.updateDiagramToStep(versionCounter);
+                highlightCurrentLine(commandInput, currentLineIndex);
             }
         });
 
         stepBackwardButton.setOnAction(e -> {
-            if (!stateHistory.isEmpty()) {
-                context = stateHistory.pop();
-                outputCounter--;
+            if (versionCounter > 0) {
+                int targetVersion = versionCounter - 1;
 
-                currentLineIndex--;
-                while (currentLineIndex >= 0 &&
-                        commandList.get(currentLineIndex).trim().isEmpty()) {
-                    currentLineIndex--;
+                int previousLineIndex = currentLineIndex - 1;
+                while (previousLineIndex >= 0 && commandList.get(previousLineIndex).trim().isEmpty()) {
+                    previousLineIndex--;
                 }
 
-                qganttManager.removeLastState();
+                qganttManager.updateDiagramToStep(targetVersion);
+
+                versionCounter = targetVersion;
+                currentLineIndex = previousLineIndex;
 
                 if (currentLineIndex >= 0) {
                     highlightCurrentLine(commandInput, currentLineIndex);
@@ -320,37 +358,154 @@ public class Main extends Application {
         stage.show();
     }
 
-    private void executeCommand(String command, TextArea outputArea, boolean saveState) {
-        if (!command.isEmpty()) {
-            String finalCommand = command;
-            Platform.runLater(() -> {
-                if (saveState) {
-                    stateHistory.push(context.clone());
+    private void executeCommand(String command) {
+        try {
+            Command parsedCommand = Parser.parse(command);
+            outputHistory.push(measurementOutput.getText());
+
+            Map<String, Object> runResult = context.run(parsedCommand);
+            String output = (String) runResult.getOrDefault("output", "");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> joinInfo = (Map<String, Object>) runResult.get("joinInfo");
+
+            if (parsedCommand.getType() == Command.CommandType.MEASURE) {
+                if (output != null && !output.isEmpty()) {
+                    try {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> operand = parsedCommand.getArguments();
+                        String nominalRegisterName = (String) operand.get("register");
+                        int nominalIndex = (int) operand.get("index");
+                        int measurementResult = Integer.parseInt(output);
+
+                        QubitRegister nominalReg = context.getNominalRegister(nominalRegisterName);
+                        if (nominalReg != null) {
+                            String targetRealRegisterName = nominalReg.getRealRegister().getName();
+                            int measuredQubitRealIndex = nominalReg.getOffsetInRealRegister() + nominalIndex;
+                            Map<Integer, Complex> finalState = context.getRealRegisterState(targetRealRegisterName);
+
+                            versionCounter++;
+                            qganttManager.addMeasurementStep(targetRealRegisterName, finalState, measuredQubitRealIndex, measurementResult, versionCounter);
+
+                            measurementOutput.appendText("Измерение " + nominalRegisterName + "[" + nominalIndex + "] = " + output + "\n");
+                        } else {
+                            measurementOutput.appendText("Ошибка: Не найден номинальный регистр '" + nominalRegisterName + "' для обновления QGantt после MEASURE.\n");
+                        }
+                    } catch (Exception parseEx) {
+                        measurementOutput.appendText("Ошибка обработки результата измерения для QGantt: " + parseEx.getMessage() + "\n");
+
+                        measurementOutput.appendText(output + "\n");
+                    }
+                } else {
+                    // Если output пуст, значит была ошибка внутри context.run(), она уже должна быть выведена
+                    // Ничего не добавляем в QGantt и не меняем версию
                 }
+            } else if (parsedCommand.getType() == Command.CommandType.CREATE_REGISTER) {
+                String realRegisterName = parsedCommand.getArgumentAsString("realRegisterName");
+                int realRegisterSize = parsedCommand.getArgumentAsInt("realRegisterSize");
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> nominalSpecs = (List<Map<String, Object>>) parsedCommand.getArgument("nominalRegisters");
 
-                Command parsedCommand = Parser.parse(finalCommand);
-                if (parsedCommand != null) {
-                    String result = context.run(parsedCommand);
+                qganttManager.createRegister(realRegisterName, realRegisterSize, nominalSpecs, null);
 
-                    if (parsedCommand.getType() == Command.CommandType.MEASURE) {
-                        measurementOutput.appendText(result + "\n");
-                    }else if (parsedCommand.getType() == Command.CommandType.CREATE_REGISTER) {
-                        int numQubits = parsedCommand.getArgumentAsInt("size");
-                        qganttManager.setNumQubits(numQubits);
-                        qganttManager.addState(context.getCurrentState());
-                    } else if (parsedCommand.getType() == Command.CommandType.APPLY_GATE) {
-                        String gateName = parsedCommand.getArgumentAsString("gate");
-                        var trace = context.getLastGateTrace();
-                        if (trace != null) {
-                            qganttManager.addGateTrace(trace, gateName);
+                QubitRegister realReg = context.getRealRegister(realRegisterName);
+                if (realReg != null) {
+                    Map<Integer, Complex> initialState = new HashMap<>();
+                    initialState.put(0, Complex.getOne());
+                    int currentVersionForState = versionCounter + 1;
+                    qganttManager.addState(realRegisterName, initialState, currentVersionForState);
+                    versionCounter++;
+                } else {
+                    measurementOutput.appendText("Ошибка: Не удалось найти реальный регистр '" + realRegisterName + "' после создания.\n");
+                }
+            } else if (parsedCommand.getType() == Command.CommandType.APPLY_GATE) {
+                String gateName = parsedCommand.getArgumentAsString("gate");
+                String targetRealRegisterName;
+
+                if (joinInfo != null) {
+                    String newRealRegName = (String) joinInfo.get("newRealRegName");
+                    targetRealRegisterName = newRealRegName;
+
+                    QubitRegister newRealReg = context.getRealRegister(newRealRegName);
+                    if (newRealReg != null) {
+                        List<Map<String, Object>> updatedNominalSpecs = context.getQubitRegisters().values().stream()
+                                .filter(nr -> nr.getRealRegister() == newRealReg)
+                                .sorted(Comparator.comparingInt(nr -> -nr.getOffsetInRealRegister())).map(nr -> {
+                                    Map<String, Object> spec = new HashMap<>();
+                                    spec.put("name", nr.getName());
+                                    spec.put("size", nr.size());
+                                    spec.put("offset", nr.getOffsetInRealRegister());
+                                    return spec;
+                                })
+                                .collect(Collectors.toList());
+
+                        @SuppressWarnings("unchecked")
+                        List<String> oldRealRegNames = (List<String>) joinInfo.get("oldRealRegNames");
+                        qganttManager.createRegister(newRealRegName, newRealReg.getRealSize(), updatedNominalSpecs, oldRealRegNames);
+
+                        @SuppressWarnings("unchecked")
+                        Map<Integer, Complex> initialJoinedState = (Map<Integer, Complex>) joinInfo.get("initialJoinedState");
+                        Map<Integer, Complex> finalState = context.getRealRegisterState(newRealRegName);
+
+                        int commonVersion = versionCounter + 1;
+                        if (initialJoinedState != null) {
+                            qganttManager.addState(newRealRegName, initialJoinedState, commonVersion);
+                        } else {
+                            measurementOutput.appendText("Предупреждение: Не удалось получить начальное состояние для объединенного регистра " + newRealRegName + "\n");
+                            qganttManager.addState(newRealRegName, new HashMap<>(), commonVersion); // Добавляем пустое, чтобы версии не сдвигались
+                        }
+
+                        qganttManager.addGateTrace(newRealRegName, finalState, context.getLastGateTrace(), gateName, commonVersion); // Используем ту же версию
+
+                        versionCounter++;
+                    } else {
+                        measurementOutput.appendText("Критическая ошибка: Не удалось найти новый реальный регистр '" + newRealRegName + "' после объединения.\n");
+                    }
+                } else {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> operandsData = (List<Map<String, Object>>) parsedCommand.getArgument("operands");
+                    if (operandsData != null && !operandsData.isEmpty()) {
+                        String firstNominalOperandName = (String) operandsData.get(0).get("register");
+                        QubitRegister nominalReg = context.getNominalRegister(firstNominalOperandName);
+                        if (nominalReg != null) {
+                            targetRealRegisterName = nominalReg.getRealRegister().getName();
+                            Map<Integer, Complex> finalState = context.getRealRegisterState(targetRealRegisterName);
+                            int versionForFinal = versionCounter + 1;
+                            qganttManager.addGateTrace(targetRealRegisterName, finalState, context.getLastGateTrace(), gateName, versionForFinal);
+                            versionCounter++;
+                        } else {
+                            measurementOutput.appendText("Ошибка: Не удалось найти номинальный регистр '" + firstNominalOperandName + "' для обновления QGantt.\n");
                         }
                     }
-
-                    outputCounter++;
-                } else {
-                    measurementOutput.appendText("Ошибка: Неверный формат команды\n");
                 }
-            });
+
+            } else if (parsedCommand.getType() == Command.CommandType.DEFINE_ORACLE_CSV) {
+                // Эта команда определяет оракул, но не меняет состояние кубитов.
+                // Просто выполняем ее в контексте (context.run уже был вызван).
+            } else if (parsedCommand.getType() == Command.CommandType.APPLY_ORACLE) {
+                if (joinInfo != null) {
+                    measurementOutput.appendText("Критическая ошибка: Обнаружено объединение регистров при применении оракула!\n");
+                    return;
+                }
+
+                String oracleName = parsedCommand.getArgumentAsString("oracleName");
+                String inputNominalRegName = parsedCommand.getArgumentAsString("inputRegisterName");
+
+                QubitRegister inputNominalReg = context.getNominalRegister(inputNominalRegName);
+                if (inputNominalReg != null) {
+                    String targetRealRegisterName = inputNominalReg.getRealRegister().getName();
+
+                    Map<Integer, Complex> finalState = context.getRealRegisterState(targetRealRegisterName);
+
+                    int versionForFinal = versionCounter + 1;
+                    qganttManager.addGateTrace(targetRealRegisterName, finalState, context.getLastGateTrace(), oracleName, versionForFinal);
+                    versionCounter++;
+                } else {
+                    measurementOutput.appendText("Ошибка: Не удалось найти номинальный регистр '" + inputNominalRegName + "' для обновления QGantt после APPLY_ORACLE.\n");
+                }
+            }
+        } catch (Exception e) {
+            measurementOutput.appendText("Ошибка: " + e.getMessage() + "\n");
+            e.printStackTrace();
         }
     }
 
@@ -362,6 +517,53 @@ public class Main extends Application {
         commandInput.textProperty().addListener((obs, oldText, newText) -> {
             commandInput.setStyleSpans(0, SyntaxHighlighter.computeHighlighting(newText));
         });
+
+        commandInput.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, new KeyEventHandler());
+    }
+
+    private static class KeyEventHandler implements javafx.event.EventHandler<KeyEvent> {
+        @Override
+        public void handle(KeyEvent event) {
+            if (event.isControlDown()) {
+                CodeArea commandInput = (CodeArea) event.getSource();
+                switch (event.getCode()) {
+                    case A:
+                        // Ctrl+A - выделить всё
+                        commandInput.selectAll();
+                        event.consume();
+                        break;
+                    case C:
+                        // Ctrl+C - копировать
+                        if (commandInput.getSelectedText().length() > 0) {
+                            final Clipboard clipboard = Clipboard.getSystemClipboard();
+                            final ClipboardContent content = new ClipboardContent();
+                            content.putString(commandInput.getSelectedText());
+                            clipboard.setContent(content);
+                            event.consume();
+                        }
+                        break;
+                    case V:
+                        // Ctrl+V - вставить
+                        final Clipboard clipboard = Clipboard.getSystemClipboard();
+                        if (clipboard.hasString()) {
+                            commandInput.insertText(commandInput.getCaretPosition(), clipboard.getString());
+                            event.consume();
+                        }
+                        break;
+                    case X:
+                        // Ctrl+X - вырезать
+                        if (commandInput.getSelectedText().length() > 0) {
+                            final Clipboard clipboard2 = Clipboard.getSystemClipboard();
+                            final ClipboardContent content = new ClipboardContent();
+                            content.putString(commandInput.getSelectedText());
+                            clipboard2.setContent(content);
+                            commandInput.replaceSelection("");
+                            event.consume();
+                        }
+                        break;
+                }
+            }
+        }
     }
 
     private void setupMeasurementOutput() {
@@ -369,12 +571,36 @@ public class Main extends Application {
         measurementOutput.setWrapText(true);
         measurementOutput.setEditable(false);
         measurementOutput.setStyle("""
-            -fx-font-family: 'Consolas', 'Monaco', monospace;
-            -fx-font-size: 14px;
-            -fx-background-color: white;
-            -fx-text-fill: black;
-            -fx-padding: 10px;
-            """);
+                -fx-font-family: 'Consolas', 'Monaco', monospace;
+                -fx-font-size: 14px;
+                -fx-background-color: white;
+                -fx-text-fill: black;
+                -fx-padding: 10px;
+                """);
+
+        measurementOutput.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, event -> {
+            if (event.isControlDown()) {
+                switch (event.getCode()) {
+                    case A:
+                        // Ctrl+A - выделить всё
+                        measurementOutput.selectAll();
+                        event.consume();
+                        break;
+                    case C:
+                        // Ctrl+C - копировать
+                        if (measurementOutput.getSelectedText().length() > 0) {
+                            final Clipboard clipboard = Clipboard.getSystemClipboard();
+                            final ClipboardContent content = new ClipboardContent();
+                            content.putString(measurementOutput.getSelectedText());
+                            clipboard.setContent(content);
+                            event.consume();
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+        });
     }
 
     private void highlightCurrentLine(CodeArea textArea, int lineIndex) {
@@ -434,18 +660,18 @@ public class Main extends Application {
             case "Qiskit", "Cirq" -> "*.py";
             default -> "*.*";
         };
-        
+
         fileChooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter(platform + " Files", extension)
         );
-        
+
         File file = fileChooser.showSaveDialog(stage);
         if (file != null) {
             String filePath = file.getAbsolutePath();
             if (!filePath.endsWith(extension.substring(1))) {
                 file = new File(filePath + extension.substring(1));
             }
-            
+
             try (PrintWriter writer = new PrintWriter(file)) {
                 writer.write(code);
             } catch (IOException ex) {

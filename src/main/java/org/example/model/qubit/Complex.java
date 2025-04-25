@@ -24,6 +24,11 @@ public class Complex implements Serializable {
         return new Complex(1);
     }
 
+    //exp^(i*phase)
+    public static Complex expI(double phase) {
+        return new Complex(Math.cos(phase), Math.sin(phase));
+    }
+
     public double getReal() {
         return real;
     }
@@ -60,10 +65,13 @@ public class Complex implements Serializable {
         return new Complex(realPart, imaginaryPart);
     }
 
+    public boolean isZero() {
+        return this.real == 0.0 && this.imaginary == 0.0;
+    }
+
     public double modulusSquared() {
         return real * real + imaginary * imaginary;
     }
-
 
     @Override
     public String toString() {
