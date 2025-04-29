@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 
 public class SyntaxHighlighter {
     private static final Set<String> OPERATIONS = new HashSet<>(Set.of(
-            "CR", "CQ", "H", "X", "Y", "Z", "S", "T",
+            "CR", "CQ", "H", "X", "Y", "Z", "S", "T", "P",
             "SWAP", "INC", "DEC", "NOT",
             "CX", "CNOT", "CCNOT", "CY", "CZ", "CH", "CS", "CT"
     ));

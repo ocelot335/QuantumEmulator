@@ -12,7 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Parser {
-    private static final Set<String> gateNames = new HashSet<>(Arrays.asList("X", "NOT", "Y", "H", "S", "T", "SWAP", "INC", "DEC"));
+    private static final Set<String> gateNames = new HashSet<>(Arrays.asList("X", "NOT", "Y", "H", "P", "S", "T", "SWAP", "INC", "DEC"));
     private static final Pattern REGISTER_DEF_PATTERN = Pattern.compile(
             "([a-zA-Z0-9_]+)" + Pattern.quote("[") + "(\\d+)" + Pattern.quote("]")
     );
@@ -144,13 +144,34 @@ public class Parser {
     }
 
     private static Command parseApplyGate(String line) {
-        String[] tokens = line.split("\\s+", 2);
+        String[] tokens = line.split("\\s+", 3);
         String commandName = tokens[0];
-        String argsString = tokens.length > 1 ? tokens[1] : "";
 
         Map<String, Object> commandArgs = new HashMap<>();
         commandArgs.put("gate", commandName);
         List<Map<String, Object>> operands = new ArrayList<>();
+        String argsString = "";
+
+        if (commandName.equalsIgnoreCase("P")) {
+            if (tokens.length < 3) {
+                throw new IllegalArgumentException("Для гейта P необходимо указать фазу и целевой кубит. Формат: P <phase> <register[index]>");
+            }
+            try {
+                double phase = Double.parseDouble(tokens[1]);
+                commandArgs.put("phase", phase);
+                argsString = tokens[2];
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Неверный формат фазы для гейта P: '" + tokens[1] + "'. Ожидается число.");
+            }
+        } else {
+            if (tokens.length > 1) {
+                argsString = tokens[1];
+                if (tokens.length > 2) {
+                    argsString += " " + tokens[2];
+                }
+            }
+        }
+
         if (!argsString.isEmpty()) {
             String[] operandTokens = argsString.split("\\s+");
             for (String token : operandTokens) {
@@ -161,9 +182,15 @@ public class Parser {
                 operands.add(operand);
             }
         }
+
         if (operands.isEmpty()) {
             throw new IllegalArgumentException("Не указаны операнды для гейта " + commandName);
         }
+        
+        if (commandName.equalsIgnoreCase("P") && operands.size() != 1) {
+            throw new IllegalArgumentException("Гейт P должен применяться ровно к одному кубиту.");
+        }
+        
         commandArgs.put("operands", operands);
         return new Command(Command.CommandType.APPLY_GATE, commandArgs);
     }

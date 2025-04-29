@@ -46,7 +46,7 @@ public class Complex implements Serializable {
     }
 
     public boolean equals(Complex other) {
-        return real == other.real && imaginary == other.imaginary;
+        return Math.abs(real-other.real)< 1e-9 && Math.abs(imaginary-other.imaginary)< 1e-9;
     }
 
     public Complex multiply(Complex other) {

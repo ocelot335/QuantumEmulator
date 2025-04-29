@@ -207,6 +207,20 @@
     let panStartX, panStartY;
     let initialScrollLeft, initialScrollTop;
 
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    const debouncedScheduleArrowUpdate = debounce(scheduleArrowUpdate, 50);
+
     function scheduleArrowUpdate() {
         if (!updatePending) {
             updatePending = true;
@@ -284,6 +298,9 @@
         const containerHeight = registerContainer.offsetHeight;
         svg.setAttribute('viewBox', `0 0 ${containerWidth} ${containerHeight}`);
 
+        const registerRect = registerContainer.getBoundingClientRect();
+        const scrollX = contentElement.scrollLeft;
+
         arrows.forEach(arrow => {
             const fromIndex = parseInt(arrow.dataset.fromColumn);
             const toIndex = parseInt(arrow.dataset.toColumn);
@@ -300,18 +317,22 @@
             
             if (!fromStateElement || !toStateElement) return;
             
-            const registerRect = registerContainer.getBoundingClientRect(); // Container relative to viewport
             const fromRect = fromStateElement.getBoundingClientRect(); // State element relative to viewport
             const toRect = toStateElement.getBoundingClientRect(); // State element relative to viewport
-            const scrollX = contentElement.scrollLeft; // <<< Получаем горизонтальную прокрутку контента
             
             const fromX = fromRect.right - registerRect.left + scrollX;
             const fromY = fromRect.top + (fromRect.height / 2) - registerRect.top;
             const toX = toRect.left - registerRect.left + scrollX;
             const toY = toRect.top + (toRect.height / 2) - registerRect.top;
             
-            const controlX = (fromX + toX) / 2;
-            const dAttr = `M ${fromX} ${fromY} C ${controlX} ${fromY}, ${controlX} ${toY}, ${toX} ${toY}`;
+            const scaledFromX = fromX / currentScale;
+            const scaledFromY = fromY / currentScale;
+            const scaledToX = toX / currentScale;
+            const scaledToY = toY / currentScale;
+            
+            const controlX = (scaledFromX + scaledToX) / 2;
+            const dAttr = `M ${scaledFromX} ${scaledFromY} C ${controlX} ${scaledFromY}, ${controlX} ${scaledToY}, ${scaledToX} ${scaledToY}`;
+            
             arrow.setAttribute('d', dAttr);
         });
     }
@@ -319,8 +340,8 @@
     function setupEventHandlers() {
         const qgantt = document.getElementById('qgantt');
         
-        qgantt.addEventListener('scroll', scheduleArrowUpdate);
-        window.addEventListener('resize', scheduleArrowUpdate);
+        qgantt.addEventListener('scroll', debouncedScheduleArrowUpdate);
+        window.addEventListener('resize', debouncedScheduleArrowUpdate);
         qgantt.addEventListener('mousedown', handlePanStart);
         qgantt.addEventListener('mouseleave', handlePanEnd); // Заканчиваем панорамирование, если мышь ушла
         qgantt.addEventListener('mouseup', handlePanEnd); // Заканчиваем при отпускании кнопки
@@ -342,7 +363,7 @@
     function setupScrollHandlers() {
         document.querySelectorAll('.register-content').forEach(content => {
             if (!content.hasScrollListener) {
-                content.addEventListener('scroll', scheduleArrowUpdate);
+                content.addEventListener('scroll', debouncedScheduleArrowUpdate);
                 content.hasScrollListener = true;
             }
         });

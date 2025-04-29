@@ -8,7 +8,7 @@ import org.example.model.qubit.QubitRegister;
 
 public class GateResolver {
 
-    public static Gate resolveByName(String name, QubitRegister register, Integer[] indices) {
+    public static Gate resolveByName(String name, QubitRegister register, Integer[] indices, double phase) {
         if (name.startsWith("C")) {
             String baseGateName = name.substring(1);
             Integer[] targetIndices = new Integer[indices.length - 1];
@@ -16,7 +16,7 @@ public class GateResolver {
             System.arraycopy(indices, 1, targetIndices, 0, indices.length - 1);
 
 
-            Gate baseGate = resolveByName(baseGateName, register, targetIndices);
+            Gate baseGate = resolveByName(baseGateName, register, targetIndices, phase);
             if (baseGate == null) {
                 return null;
             }
@@ -33,6 +33,7 @@ public class GateResolver {
             case "SWAP" -> new SWAP(register, indices);
             case "INC" -> new Increment(register, indices, true);
             case "DEC" -> new Increment(register, indices, false);
+            case "P" -> new P(register, phase, indices);
             default -> null;
         };
     }

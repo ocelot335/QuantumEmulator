@@ -391,7 +391,7 @@ public class Main extends Application {
                             measurementOutput.appendText("Ошибка: Не найден номинальный регистр '" + nominalRegisterName + "' для обновления QGantt после MEASURE.\n");
                         }
                     } catch (Exception parseEx) {
-                        measurementOutput.appendText("Ошибка обработки результата измерения для QGantt: " + parseEx.getMessage() + "\n");
+                        //measurementOutput.appendText("Ошибка обработки результата измерения для QGantt: " + parseEx.getMessage() + "\n");
 
                         measurementOutput.appendText(output + "\n");
                     }

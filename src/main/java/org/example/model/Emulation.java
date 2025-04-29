@@ -111,6 +111,10 @@ public class Emulation implements Serializable, Cloneable {
 
         Map<String, Object> args = command.getArguments();
         String gateName = (String) args.get("gate");
+        double phase = 0;
+        if(args.containsKey("phase")) {
+            phase = (double) args.get("phase");
+        }
         List<Map<String, Object>> operandsData = (List<Map<String, Object>>) args.get("operands");
 
         if (operandsData == null || operandsData.isEmpty()) {
@@ -241,7 +245,7 @@ public class Emulation implements Serializable, Cloneable {
 
         try {
             Integer[] absoluteIndicesInteger = Arrays.stream(absoluteIndices).boxed().toArray(Integer[]::new);
-            Gate gate = GateResolver.resolveByName(gateName, baseRealRegister, absoluteIndicesInteger);
+            Gate gate = GateResolver.resolveByName(gateName, baseRealRegister, absoluteIndicesInteger, phase);
             if (gate == null) {
                 result.put("output", "Неизвестный гейт: " + gateName);
                 return result;

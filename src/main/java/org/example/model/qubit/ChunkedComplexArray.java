@@ -35,6 +35,10 @@ public class ChunkedComplexArray implements Serializable, Cloneable {
         }
     }
 
+    public void clear() {
+        innerArray.clear();
+    }
+
     public Complex get(int id) {
         if (!innerArray.containsKey(id / CHUNK_SIZE)) {
             return Complex.getZero();
