@@ -1,0 +1,32 @@
+<component name="ArtifactManager">
+  <artifact name="QE:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/QE_jar</output-path>
+    <root id="root">
+      <element id="archive" name="QE.jar">
+        <element id="module-output" name="QE" />
+      </element>
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-base:win:21.0.1" />
+      <element id="library" level="project" name="Maven: org.reactfx:reactfx:2.0-M5" />
+      <element id="library" level="project" name="Maven: org.fxmisc.flowless:flowless:0.7.2" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-media:21.0.1" />
+      <element id="library" level="project" name="Maven: org.kordamp.bootstrapfx:bootstrapfx-core:0.4.0" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-fxml:win:21.0.1" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-web:21.0.1" />
+      <element id="library" level="project" name="Maven: org.fxmisc.wellbehaved:wellbehavedfx:0.3.3" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-graphics:win:21.0.1" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-swing:win:21.0.1" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-fxml:21.0.1" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-graphics:21.0.1" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-web:win:21.0.1" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-media:win:21.0.1" />
+      <element id="library" level="project" name="Maven: org.fxmisc.richtext:richtextfx:0.11.2" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-controls:win:21.0.1" />
+      <element id="library" level="project" name="Maven: org.fxmisc.undo:undofx:2.1.1" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-swing:21.0.1" />
+      <element id="library" level="project" name="Maven: com.dlsc.formsfx:formsfx-core:11.6.0" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-controls:21.0.1" />
+      <element id="library" level="project" name="Maven: org.openjfx:javafx-base:21.0.1" />
+      <element id="library" level="project" name="Maven: org.controlsfx:controlsfx:11.1.2" />
+    </root>
+  </artifact>
+</component>

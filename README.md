@@ -1,5 +1,5 @@
 # Set-oriented quantum emulator
-Ссылка на исполняемый файл: TODO  
+Ссылка на исполняемый файл: https://www.dropbox.com/scl/fi/umnnx5jiraq9hk3jkhsfs/QE.jar?rlkey=0fk4t8g6cnkv6wjkncjnem9mu&st=wafy37n2&dl=0  
 Ссылка на инструкцию: https://docs.google.com/document/d/1i9vGTSu4wpVDp9K7-7Sj0TV1UPXgmPxpxBDiSYf1UpU/edit?usp=sharing
 
 Дополнение для macOS:
