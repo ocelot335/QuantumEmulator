@@ -23,8 +23,8 @@ public class QiskitTranslator implements QuantumTranslator {
         int totalQubits = 0;
         for (Command command : commands) {
             if (command.getType() == Command.CommandType.CREATE_REGISTER) {
-                String name = command.getArgumentAsString("name");
-                int size = command.getArgumentAsInt("size");
+                String name = command.getArgumentAsString("realRegisterName");
+                int size = command.getArgumentAsInt("realRegisterSize");
                 registerSizes.put(name, size);
                 registerOffsets.put(name, totalQubits);
                 totalQubits += size;
