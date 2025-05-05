@@ -1,0 +1,5 @@
+CR qr1[5]
+CR qr2[3]
+H qr1[0]
+H qr2[0]
+CX qr1[0] qr2[0]

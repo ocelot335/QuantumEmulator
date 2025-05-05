@@ -1,0 +1,57 @@
+DEFINE_ORACLE_CSV f "C:/Users/nagov/OneDrive/Рабочий стол/Алгосы для квантового эмулятора/oracleTestGrover.csv"
+
+CR inp[3], out[1]
+
+H inp[0]
+H inp[1]
+H inp[2]
+
+X out[0]
+H out[0]
+
+
+APPLY_ORACLE f inp -> out[0]
+
+
+H inp[0]
+H inp[1]
+H inp[2]
+
+X inp[0]
+X inp[1]
+X inp[2]
+
+CCZ inp[0] inp[1] inp[2]
+
+X inp[0]
+X inp[1]
+X inp[2]
+
+H inp[0]
+H inp[1]
+H inp[2]
+APPLY_ORACLE f inp -> out[0]
+
+H inp[0]
+H inp[1]
+H inp[2]
+
+X inp[0]
+X inp[1]
+X inp[2]
+
+CCZ inp[0] inp[1] inp[2]
+
+X inp[0]
+X inp[1]
+X inp[2]
+
+H inp[0]
+H inp[1]
+H inp[2]
+
+M inp[0]
+M inp[1]
+M inp[2]
+
+
